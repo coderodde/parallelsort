@@ -30,8 +30,13 @@ public class Arrays {
 
         @Override
         public int compareTo(Entry<E> o) {
-            final long delta = key - o.key;
-            return delta < 0 ? -1 : (delta > 0 ? 1 : 0);
+            if (key < o.key) {
+                return -1;
+            } else if (key > o.key) {
+                return 1;
+            } else {
+                return 0;
+            }
         }
     }
         
@@ -226,8 +231,8 @@ public class Arrays {
         final int[] startIndexMap = new int[BUCKETS];
         final int[] processedMap  = new int[BUCKETS];
         
-        for (final Entry<E> e : array) {
-            bucketSizeMap[(int)(e.key >>> RIGHT_SHIFT_AMOUNT)]++;
+        for (int i = fromIndex; i < toIndex; ++i) {
+            bucketSizeMap[(int)(array[i].key >>> RIGHT_SHIFT_AMOUNT)]++;
         }
         
         startIndexMap[LEAST_SIGNED_BUCKET_INDEX] = fromIndex;
@@ -245,7 +250,8 @@ public class Arrays {
                                bucketSizeMap[i - 1];
         }
         
-        for (final Entry<E> e : array) {
+        for (int i = fromIndex; i < toIndex; ++i) {
+            final Entry<E> e = array[i];
             final int index = (int)(e.key >>> RIGHT_SHIFT_AMOUNT);
             buffer[startIndexMap[index] + processedMap[index]++] = e;
         }
@@ -292,32 +298,6 @@ public class Arrays {
                                      toIndex - fromIndex);
                 }
             }
-            
-//            // byteIndex is at most 6 here, in which case target is the original 
-//            // array.
-//            if ((byteIndex & 1) == 1) {
-//                // byteIndex = 5, 3, 1.
-//                // target is buffer,
-//                // source is original array.
-//                if (even) {
-//                    System.arraycopy(source, 
-//                                     fromIndex, 
-//                                     target, 
-//                                     fromIndex, 
-//                                     toIndex - fromIndex);
-//                }
-//            } else {
-//                // byteIndex = 6, 4, 2, 0.
-//                // target is original array,
-//                // source is buffer.
-//                if (!even) {
-//                    System.arraycopy(target,
-//                                     fromIndex, 
-//                                     source, 
-//                                     fromIndex, 
-//                                     toIndex - fromIndex);
-//                }
-//            }
             
             return;
         }
@@ -384,13 +364,14 @@ public class Arrays {
                                                final int fromIndex,
                                                final int toIndex) {
         final int RANGE_LENGTH = toIndex - fromIndex;
-        final int PASSES = (int)(Math.ceil(Math.log(RANGE_LENGTH) / 
-                                           Math.log(2)));
         
         Entry<E>[] s = source;
         Entry<E>[] t = target;
         
+        int passes = 0;
+        
         for (int width = 1; width < RANGE_LENGTH; width <<= 1) {
+            ++passes;
             int c = 0;
             
             for (; c < RANGE_LENGTH / width; c += 2) {
@@ -422,7 +403,7 @@ public class Arrays {
             t = tmp;
         }
         
-        return (PASSES & 1) == 0;
+        return (passes & 1) == 0;
     }
     
     public static void main(final String... args) {
@@ -430,15 +411,31 @@ public class Arrays {
         final int SIZE = 10000000;
         final Random rnd = new Random(SEED);
         final Entry<Object>[] array1 = createRandomArray(SIZE, rnd);
+        final Entry<Object>[] array2 = array1.clone();
+        final Entry<Object>[] array3 = array1.clone();
         
         System.out.println("Seed: " + SEED);
         
         long ta = System.currentTimeMillis();
-        parallelSort(array1);
+        parallelSort(array1, 3, array1.length);
         long tb = System.currentTimeMillis();
         
-        System.out.println("Time: " + (tb - ta) + " ms.");
-        System.out.println("Is sorted: " + isSorted(array1));
+        System.out.println("My parallel sort; time:    " + (tb - ta) + " ms.");
+        System.out.println("Is sorted: " + isSorted(array1, 3, array1.length));
+        
+        ta = System.currentTimeMillis();
+        java.util.Arrays.parallelSort(array2);
+        tb = System.currentTimeMillis();
+        
+        System.out.println("JDK parallel sort; time:   " + (tb - ta) + " ms.");
+        System.out.println("Is sorted: " + isSorted(array2));
+        
+        ta = System.currentTimeMillis();
+        java.util.Arrays.sort(array3);
+        tb = System.currentTimeMillis();
+        
+        System.out.println("JDK sequential sort; time: " + (tb - ta) + " ms.");
+        System.out.println("Is sorted: " + isSorted(array3));
     }
     
     public static final Entry<Object>[] createRandomArray(final int size,
