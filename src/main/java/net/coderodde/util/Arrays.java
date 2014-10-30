@@ -1,6 +1,8 @@
 package net.coderodde.util;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 
 public class Arrays {
@@ -12,9 +14,8 @@ public class Arrays {
     private static final int THREAD_THRESHOLD = 1 << 16;
     private static final int MERGESORT_THRESHOLD = 2048;
     private static final int LEAST_SIGNED_BUCKET_INDEX = 128;
- 
- 
     
+ 
     public static <E> void parallelSort(final Entry<E>[] array) {
         parallelSort(array, 0, array.length);
     }
@@ -49,8 +50,8 @@ public class Arrays {
             return;
         }
         
-        final int THREADS = 1;/*Math.min(Runtime.getRuntime().availableProcessors(),
-                                     RANGE_LENGTH / THREAD_THRESHOLD);*/
+        final int THREADS = Math.min(Runtime.getRuntime().availableProcessors(),
+                                     RANGE_LENGTH / THREAD_THRESHOLD);
         System.out.println("Top threads: " + THREADS);
         
         if (THREADS < 2) {
@@ -180,7 +181,77 @@ public class Arrays {
             ++threadCountMap[i];
         }
         
+        final List<Integer> nonEmptyBucketIndices = 
+                new ArrayList<>(nonEmptyBucketAmount);
         
+        final int OPTIMAL_RANGE = RANGE_LENGTH / SPAWN_DEGREE;
+        
+        for (int i = 0; i != BUCKETS; ++i) {
+            if (bucketSizeMap[i] != 0) {
+                nonEmptyBucketIndices.add(i);
+            }
+        }
+        
+        Collections.sort(nonEmptyBucketIndices, 
+                         new BucketSizeComparator(bucketSizeMap));
+        
+        final int OPTIMAL_RANGE_LENGTH = RANGE_LENGTH / SPAWN_DEGREE;
+        int listIndex = 0;
+        int packed = 0;
+        int f = 0;
+        int j = 0;
+        
+        while (j < nonEmptyBucketIndices.size()) {
+            int tmp = bucketSizeMap[nonEmptyBucketIndices.get(j++)];
+            packed += tmp;
+            
+            if (packed >= OPTIMAL_RANGE || j == nonEmptyBucketIndices.size()) {
+                packed = 0;
+                
+                for (int i = f; i < j; ++i) {
+                    bucketIndexListArray[listIndex]
+                            .add(nonEmptyBucketIndices.get(i));
+                }
+                
+                ++listIndex;
+                f = j;
+            }
+        }
+        
+        final Sorter[] sorters = new Sorter[SPAWN_DEGREE];
+        final List<List<Task<E>>> llt = new ArrayList<>(SPAWN_DEGREE);
+        
+        for (int i = 0; i != SPAWN_DEGREE; ++i) {
+            final List<Task<E>> lt = new ArrayList<>();
+            
+            for (int idx : bucketIndexListArray[i]) {
+                lt.add(new Task<E>(buffer,
+                                   array,
+                                   threadCountMap[i],
+                                   MOST_SIGNIFICANT_BYTE_INDEX - 1,
+                                   startIndexMap[idx],
+                                   startIndexMap[idx] + bucketSizeMap[idx]));
+                                   
+            }
+            
+            llt.add(lt);
+        }
+        
+        for (int i = 0; i != SPAWN_DEGREE - 1; ++i) {
+            sorters[i] = new Sorter<E>(llt.get(i));
+            sorters[i].start();
+        }
+        
+        new Sorter<E>(llt.get(SPAWN_DEGREE - 1)).run();
+        
+        try {
+            for (int i = 0; i != SPAWN_DEGREE - 1; ++i) {
+                sorters[i].join();
+            }
+        } catch (final InterruptedException ie) {
+            ie.printStackTrace();
+            return;
+        }
     }
     
     private static final <E> void sortTopImpl(final Entry<E>[] array,
@@ -450,6 +521,311 @@ public class Arrays {
                     target[startIndexMap[index] + processedMap[index]++] = e;
                 }
             }
+        }
+    }
+    
+    private static final class Sorter<E> extends Thread {
+        private final List<Task<E>> taskList;
+        
+        Sorter(final List<Task<E>> taskList) {
+            this.taskList = taskList;
+        }
+        
+        @Override
+        public void run() {
+            for (final Task task : taskList) {
+                if (task.threads > 1) {
+                    parallelSortImpl(task.source,
+                                     task.target,
+                                     task.threads,
+                                     task.byteIndex,
+                                     task.fromIndex,
+                                     task.toIndex);
+                } else {
+                    sortImpl(task.source,
+                             task.target,
+                             task.byteIndex,
+                             task.fromIndex,
+                             task.toIndex);
+                }
+            }
+        }
+    }
+    
+    private static final <E> void parallelSortImpl(final Entry<E>[] source,
+                                                   final Entry<E>[] target,
+                                                   final int threads,
+                                                   final int byteIndex,
+                                                   final int fromIndex,
+                                                   final int toIndex) {
+        final int RANGE_LENGTH = toIndex - fromIndex;
+        
+        if (RANGE_LENGTH <= MERGESORT_THRESHOLD) {
+            final boolean even = mergesort(source, target, fromIndex, toIndex);
+            
+            if (even) {
+                // source contains the sorted bucket.
+                if ((byteIndex & 1) == 0) {
+                    // byteIndex = 6, 4, 2, 0.
+                    // source is buffer, copy to target.
+                    System.arraycopy(source,
+                                     fromIndex, 
+                                     target,
+                                     fromIndex, 
+                                     toIndex - fromIndex);
+                }
+            } else {
+                // target contains the sorted bucket.
+                if ((byteIndex & 1) == 1) {
+                    // byteIndex = 5, 3, 1.
+                    // target is buffer, copy to source.
+                    System.arraycopy(target, 
+                                     fromIndex,
+                                     source, 
+                                     fromIndex, 
+                                     toIndex - fromIndex);
+                }
+            }
+            
+            return;
+        }
+        
+        if (threads < 2) {
+            sortImpl(source, target, byteIndex, fromIndex, toIndex);
+            return;
+        }
+        
+        final BucketSizeCounter[] counters = new BucketSizeCounter[threads];
+        final int SUB_RANGE_LENGTH = RANGE_LENGTH / threads;
+        int start = fromIndex;
+        
+        for (int i = 0; i != threads - 1; ++i, start += SUB_RANGE_LENGTH) {
+            counters[i] = new BucketSizeCounter<>(source,
+                                                  MOST_SIGNIFICANT_BYTE_INDEX,
+                                                  start,
+                                                  start + SUB_RANGE_LENGTH);
+            counters[i].start();
+        }
+        
+        counters[threads - 1] = 
+                new BucketSizeCounter<>(source,
+                                        MOST_SIGNIFICANT_BYTE_INDEX,
+                                        start,
+                                        toIndex);
+        
+        counters[threads - 1].run();
+        
+        try {
+            for (int i = 0; i != threads - 1; ++i) {
+                counters[i].join();
+            }
+        } catch (final InterruptedException ie) {
+            ie.printStackTrace();
+            return;
+        }
+        
+        final int[] bucketSizeMap = new int[BUCKETS];
+        final int[] startIndexMap = new int[BUCKETS];
+        
+        for (int i = 0; i != threads; ++i) {
+            for (int j = 0; j != BUCKETS; ++j) {
+                bucketSizeMap[j] += counters[i].localBucketSizeMap[j];
+            }
+        }
+        
+        startIndexMap[LEAST_SIGNED_BUCKET_INDEX] = fromIndex;
+        
+        for (int i = LEAST_SIGNED_BUCKET_INDEX + 1; i != BUCKETS; ++i) {
+            startIndexMap[i] = startIndexMap[i - 1] +
+                               bucketSizeMap[i - 1];
+        }
+        
+        startIndexMap[0] = startIndexMap[BUCKETS - 1] + 
+                           bucketSizeMap[BUCKETS - 1];
+        
+        for (int i = 1; i != LEAST_SIGNED_BUCKET_INDEX; ++i) {
+            startIndexMap[i] = startIndexMap[i - 1] +
+                               bucketSizeMap[i - 1];
+        }
+        
+        final BucketInserter<E>[] inserters = new BucketInserter[threads - 1];
+        final int[][] processedMaps = new int[threads][BUCKETS];
+        
+        for (int i = 1; i != threads; ++i) {
+            int[] partialBucketSizeMap = counters[i - 1].localBucketSizeMap;
+            
+            for (int j = 0; j != BUCKETS; ++j) {
+                processedMaps[i][j] = 
+                        processedMaps[i - 1][j] + partialBucketSizeMap[j];
+            }
+        }
+        
+        int startIndex = fromIndex;
+        
+        for (int i = 0; i != threads - 1; ++i, startIndex += SUB_RANGE_LENGTH) {
+            inserters[i] =
+                    new BucketInserter<>(startIndexMap,
+                                         processedMaps[i],
+                                         source,
+                                         target,
+                                         MOST_SIGNIFICANT_BYTE_INDEX,
+                                         startIndex,
+                                         startIndex + SUB_RANGE_LENGTH);
+            inserters[i].start();
+        }
+        
+        new BucketInserter<>(startIndexMap,
+                             processedMaps[threads - 1],
+                             source,
+                             target,
+                             MOST_SIGNIFICANT_BYTE_INDEX,
+                             startIndex,
+                             toIndex).run();
+        
+        try {
+            for (int i = 0; i != threads - 1; ++i) {
+                inserters[i].join();
+            }
+        } catch (final InterruptedException ie) {
+            ie.printStackTrace();
+            return;
+        }
+        
+        int nonEmptyBucketAmount = 0;
+        
+        for (int i : bucketSizeMap) {
+            if (i != 0) {
+                ++nonEmptyBucketAmount;
+            }
+        }
+        
+        final int SPAWN_DEGREE = Math.min(nonEmptyBucketAmount, threads);
+        final List<Integer>[] bucketIndexListArray = new List[SPAWN_DEGREE];
+        
+        for (int i = 0; i != SPAWN_DEGREE; ++i) {
+            bucketIndexListArray[i] = new ArrayList<>(nonEmptyBucketAmount);
+        }
+        
+        final int[] threadCountMap = new int[SPAWN_DEGREE];
+        
+        for (int i = 0; i != SPAWN_DEGREE; ++i) {
+            threadCountMap[i] = threads / SPAWN_DEGREE;
+        }
+        
+        for (int i = 0; i != threads % SPAWN_DEGREE; ++i) {
+            ++threadCountMap[i];
+        }
+        
+        final List<Integer> nonEmptyBucketIndices = 
+                new ArrayList<>(nonEmptyBucketAmount);
+        
+        final int OPTIMAL_RANGE = RANGE_LENGTH / SPAWN_DEGREE;
+        
+        for (int i = 0; i != BUCKETS; ++i) {
+            if (bucketSizeMap[i] != 0) {
+                nonEmptyBucketIndices.add(i);
+            }
+        }
+        
+        Collections.sort(nonEmptyBucketIndices, 
+                         new BucketSizeComparator(bucketSizeMap));
+        
+        final int OPTIMAL_RANGE_LENGTH = RANGE_LENGTH / SPAWN_DEGREE;
+        int listIndex = 0;
+        int packed = 0;
+        int f = 0;
+        int j = 0;
+        
+        while (j < nonEmptyBucketIndices.size()) {
+            int tmp = bucketSizeMap[nonEmptyBucketIndices.get(j++)];
+            packed += tmp;
+            
+            if (packed >= OPTIMAL_RANGE || j == nonEmptyBucketIndices.size()) {
+                packed = 0;
+                
+                for (int i = f; i < j; ++i) {
+                    bucketIndexListArray[listIndex]
+                            .add(nonEmptyBucketIndices.get(i));
+                }
+                
+                ++listIndex;
+                f = j;
+            }
+        }
+        
+        final Sorter[] sorters = new Sorter[SPAWN_DEGREE];
+        final List<List<Task<E>>> llt = new ArrayList<>(SPAWN_DEGREE);
+        
+        for (int i = 0; i != SPAWN_DEGREE; ++i) {
+            final List<Task<E>> lt = new ArrayList<>();
+            
+            for (int idx : bucketIndexListArray[i]) {
+                lt.add(new Task<E>(target,
+                                   source,
+                                   threadCountMap[i],
+                                   MOST_SIGNIFICANT_BYTE_INDEX - 1,
+                                   startIndexMap[idx],
+                                   startIndexMap[idx] + bucketSizeMap[idx]));
+                                   
+            }
+            
+            llt.add(lt);
+        }
+        
+        for (int i = 0; i != SPAWN_DEGREE - 1; ++i) {
+            sorters[i] = new Sorter<E>(llt.get(i));
+            sorters[i].start();
+        }
+        
+        new Sorter<>(llt.get(SPAWN_DEGREE - 1)).run();
+        
+        try {
+            for (int i = 0; i != SPAWN_DEGREE - 1; ++i) {
+                sorters[i].join();
+            }
+        } catch (final InterruptedException ie) {
+            ie.printStackTrace();
+            return;
+        }
+    }
+    
+    private static final class Task<E> {
+        
+        private final Entry<E>[] source;
+        private final Entry<E>[] target;
+        private final int threads;
+        private final int byteIndex;
+        private final int fromIndex;
+        private final int toIndex;
+        
+        Task(final Entry<E>[] source,
+             final Entry<E>[] target,
+             final int threads,
+             final int byteIndex,
+             final int fromIndex,
+             final int toIndex) {
+            this.source = source;
+            this.target = target;
+            this.threads = threads;
+            this.byteIndex = byteIndex;
+            this.fromIndex = fromIndex;
+            this.toIndex = toIndex;
+        }
+    }
+
+    private static final class BucketSizeComparator 
+    implements Comparator<Integer> {
+        private final int[] bucketSizeMap;
+
+        BucketSizeComparator(final int[] bucketSizeMap) {
+            this.bucketSizeMap = bucketSizeMap;
+        }
+
+        @Override
+        public int compare(final Integer i1, final Integer i2) {
+            final int sz1 = bucketSizeMap[i1];
+            final int sz2 = bucketSizeMap[i2];
+            return sz1 - sz2;
         }
     }
 }
