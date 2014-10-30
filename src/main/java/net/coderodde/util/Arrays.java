@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import static net.coderodde.util.Utilities.isSorted;
 
 public class Arrays {
 
@@ -12,7 +13,7 @@ public class Arrays {
     private static final int RIGHT_SHIFT_AMOUNT = 56;
     private static final int MOST_SIGNIFICANT_BYTE_INDEX = 7;
     private static final int THREAD_THRESHOLD = 1 << 16;
-    private static final int MERGESORT_THRESHOLD = 2048;
+    private static final int MERGESORT_THRESHOLD = 4096;
     private static final int LEAST_SIGNED_BUCKET_INDEX = 128;
     
  
@@ -131,8 +132,8 @@ public class Arrays {
             inserters[i] =
                     new BucketInserter<>(startIndexMap,
                                          processedMaps[i],
-                                         buffer,
                                          array,
+                                         buffer,
                                          MOST_SIGNIFICANT_BYTE_INDEX,
                                          startIndex,
                                          startIndex + SUB_RANGE_LENGTH);
@@ -141,8 +142,8 @@ public class Arrays {
         
         new BucketInserter<>(startIndexMap,
                              processedMaps[THREADS - 1],
-                             buffer,
                              array,
+                             buffer,
                              MOST_SIGNIFICANT_BYTE_INDEX,
                              startIndex,
                              toIndex).run();
@@ -181,68 +182,53 @@ public class Arrays {
             ++threadCountMap[i];
         }
         
-        final List<Integer> nonEmptyBucketIndices = 
-                new ArrayList<>(nonEmptyBucketAmount);
-        
-        final int OPTIMAL_RANGE = RANGE_LENGTH / SPAWN_DEGREE;
-        
-        for (int i = 0; i != BUCKETS; ++i) {
-            if (bucketSizeMap[i] != 0) {
-                nonEmptyBucketIndices.add(i);
-            }
-        }
-        
-        Collections.sort(nonEmptyBucketIndices, 
-                         new BucketSizeComparator(bucketSizeMap));
-        
-        final int OPTIMAL_RANGE_LENGTH = RANGE_LENGTH / SPAWN_DEGREE;
-        int listIndex = 0;
-        int packed = 0;
-        int f = 0;
-        int j = 0;
-        
-        while (j < nonEmptyBucketIndices.size()) {
-            int tmp = bucketSizeMap[nonEmptyBucketIndices.get(j++)];
-            packed += tmp;
-            
-            if (packed >= OPTIMAL_RANGE || j == nonEmptyBucketIndices.size()) {
-                packed = 0;
-                
-                for (int i = f; i < j; ++i) {
-                    bucketIndexListArray[listIndex]
-                            .add(nonEmptyBucketIndices.get(i));
-                }
-                
-                ++listIndex;
-                f = j;
-            }
-        }
-        
         final Sorter[] sorters = new Sorter[SPAWN_DEGREE];
         final List<List<Task<E>>> llt = new ArrayList<>(SPAWN_DEGREE);
+        final List<Integer> bucketIndexList = new ArrayList<>(BUCKETS);
+        
+        for (int i = 0; i != BUCKETS; ++i) {
+            if (bucketSizeMap[i] > 0) {
+                bucketIndexList.add(i);
+            }
+        }
+        
+        // bucketIndexList is descending in bucket size.
+        Collections.sort(bucketIndexList, 
+                         new BucketSizeComparator(bucketSizeMap)); // OK.
+        
+//        for (int i : bucketIndexList) {
+//            System.out.println(bucketSizeMap[i] + " : " + i);
+//        }
+        
+        final int OPTIMAL_SUBRANGE_LENGTH = RANGE_LENGTH / SPAWN_DEGREE;
+        final List<List<Task<E>>> tll = new ArrayList<>(SPAWN_DEGREE);
+        int bucketIndex = 0;
         
         for (int i = 0; i != SPAWN_DEGREE; ++i) {
-            final List<Task<E>> lt = new ArrayList<>();
+            final List<Task<E>> tl = new ArrayList<>();
+            int packed = 0;
             
-            for (int idx : bucketIndexListArray[i]) {
-                lt.add(new Task<E>(buffer,
-                                   array,
-                                   threadCountMap[i],
-                                   MOST_SIGNIFICANT_BYTE_INDEX - 1,
-                                   startIndexMap[idx],
-                                   startIndexMap[idx] + bucketSizeMap[idx]));
-                                   
+            while (packed < OPTIMAL_SUBRANGE_LENGTH && bucketIndex < BUCKETS) {
+                tl.add(new Task<>(buffer,
+                                  array,
+                                  threadCountMap[SPAWN_DEGREE - 1 - i],
+                                  MOST_SIGNIFICANT_BYTE_INDEX - 1,
+                                  startIndexMap[bucketIndex],
+                                  startIndexMap[bucketIndex] + // Note the '+'!
+                                  bucketSizeMap[bucketIndex]));
+                packed += bucketSizeMap[bucketIndex];
+                ++bucketIndex;
             }
             
-            llt.add(lt);
+            tll.add(tl);
         }
         
         for (int i = 0; i != SPAWN_DEGREE - 1; ++i) {
-            sorters[i] = new Sorter<E>(llt.get(i));
+            sorters[i] = new Sorter<>(tll.get(i));
             sorters[i].start();
         }
         
-        new Sorter<E>(llt.get(SPAWN_DEGREE - 1)).run();
+        new Sorter<>(tll.get(SPAWN_DEGREE - 1)).run();
         
         try {
             for (int i = 0; i != SPAWN_DEGREE - 1; ++i) {
@@ -560,6 +546,8 @@ public class Arrays {
                                                    final int toIndex) {
         final int RANGE_LENGTH = toIndex - fromIndex;
         
+        System.out.println("Parallel-non-top: " + fromIndex + ", " + toIndex);
+        
         if (RANGE_LENGTH <= MERGESORT_THRESHOLD) {
             final boolean even = mergesort(source, target, fromIndex, toIndex);
             
@@ -760,20 +748,19 @@ public class Arrays {
             final List<Task<E>> lt = new ArrayList<>();
             
             for (int idx : bucketIndexListArray[i]) {
-                lt.add(new Task<E>(target,
-                                   source,
-                                   threadCountMap[i],
-                                   MOST_SIGNIFICANT_BYTE_INDEX - 1,
-                                   startIndexMap[idx],
-                                   startIndexMap[idx] + bucketSizeMap[idx]));
-                                   
+                lt.add(new Task<>(target,
+                                  source,
+                                  threadCountMap[i],
+                                  MOST_SIGNIFICANT_BYTE_INDEX - 1,
+                                  startIndexMap[idx],
+                                  startIndexMap[idx] + bucketSizeMap[idx]));
             }
             
             llt.add(lt);
         }
         
         for (int i = 0; i != SPAWN_DEGREE - 1; ++i) {
-            sorters[i] = new Sorter<E>(llt.get(i));
+            sorters[i] = new Sorter<>(llt.get(i));
             sorters[i].start();
         }
         
@@ -786,6 +773,10 @@ public class Arrays {
         } catch (final InterruptedException ie) {
             ie.printStackTrace();
             return;
+        }
+        
+        if (!isSorted(target, fromIndex, toIndex)) {
+            System.out.println("Yes");
         }
     }
     
@@ -825,7 +816,7 @@ public class Arrays {
         public int compare(final Integer i1, final Integer i2) {
             final int sz1 = bucketSizeMap[i1];
             final int sz2 = bucketSizeMap[i2];
-            return sz1 - sz2;
+            return sz2 - sz1;
         }
     }
 }

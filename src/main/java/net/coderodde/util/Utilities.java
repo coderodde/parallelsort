@@ -26,7 +26,7 @@ public class Utilities {
         final Entry[] array = new Entry[size];
         
         for (int i = 0; i < size; ++i) {
-            final long key = (((long) rnd.nextInt()) << 32) | rnd.nextInt();
+            final long key = rnd.nextLong();
             array[i] = new Entry<>(key, null);
         }
         
