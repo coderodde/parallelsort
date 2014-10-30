@@ -4,7 +4,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
-import static net.coderodde.util.Utilities.isSorted;
 
 public class Arrays {
 
@@ -53,10 +52,8 @@ public class Arrays {
         
         final int THREADS = Math.min(Runtime.getRuntime().availableProcessors(),
                                      RANGE_LENGTH / THREAD_THRESHOLD);
-        System.out.println("Top threads: " + THREADS);
         
         if (THREADS < 2) {
-            System.out.println("Resorting to sequential sort.");
             sortTopImpl(array, buffer, fromIndex, toIndex);
             return;
         }
@@ -183,7 +180,6 @@ public class Arrays {
         }
         
         final Sorter[] sorters = new Sorter[SPAWN_DEGREE];
-        final List<List<Task<E>>> llt = new ArrayList<>(SPAWN_DEGREE);
         final List<Integer> bucketIndexList = new ArrayList<>(BUCKETS);
         
         for (int i = 0; i != BUCKETS; ++i) {
@@ -194,11 +190,7 @@ public class Arrays {
         
         // bucketIndexList is descending in bucket size.
         Collections.sort(bucketIndexList, 
-                         new BucketSizeComparator(bucketSizeMap)); // OK.
-        
-//        for (int i : bucketIndexList) {
-//            System.out.println(bucketSizeMap[i] + " : " + i);
-//        }
+                         new BucketSizeComparator(bucketSizeMap));
         
         final int OPTIMAL_SUBRANGE_LENGTH = RANGE_LENGTH / SPAWN_DEGREE;
         final List<List<Task<E>>> tll = new ArrayList<>(SPAWN_DEGREE);
@@ -546,8 +538,6 @@ public class Arrays {
                                                    final int toIndex) {
         final int RANGE_LENGTH = toIndex - fromIndex;
         
-        System.out.println("Parallel-non-top: " + fromIndex + ", " + toIndex);
-        
         if (RANGE_LENGTH <= MERGESORT_THRESHOLD) {
             final boolean even = mergesort(source, target, fromIndex, toIndex);
             
@@ -679,6 +669,16 @@ public class Arrays {
             return;
         }
         
+        if (byteIndex == 0) {
+//            System.arraycopy(target,
+//                             fromIndex,
+//                             source,
+//                             fromIndex,
+//                             toIndex - fromIndex);
+            // We are done.
+            return;
+        }
+        
         int nonEmptyBucketAmount = 0;
         
         for (int i : bucketSizeMap) {
@@ -751,7 +751,7 @@ public class Arrays {
                 lt.add(new Task<>(target,
                                   source,
                                   threadCountMap[i],
-                                  MOST_SIGNIFICANT_BYTE_INDEX - 1,
+                                  byteIndex - 1,
                                   startIndexMap[idx],
                                   startIndexMap[idx] + bucketSizeMap[idx]));
             }
@@ -764,6 +764,7 @@ public class Arrays {
             sorters[i].start();
         }
         
+        System.out.println("bi: " + byteIndex);
         new Sorter<>(llt.get(SPAWN_DEGREE - 1)).run();
         
         try {
@@ -773,10 +774,6 @@ public class Arrays {
         } catch (final InterruptedException ie) {
             ie.printStackTrace();
             return;
-        }
-        
-        if (!isSorted(target, fromIndex, toIndex)) {
-            System.out.println("Yes");
         }
     }
     
