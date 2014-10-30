@@ -17,7 +17,7 @@
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>exec-maven-plugin</artifactId>
                 <configuration>
-                    <mainClass>net.coderodde.util.Arrays</mainClass>
+                    <mainClass>net.coderodde.util.Demo</mainClass>
                 </configuration>
             </plugin>
         </plugins>

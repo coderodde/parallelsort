@@ -2,7 +2,6 @@ package net.coderodde.util;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Random;
 
 public class Arrays {
 
@@ -11,50 +10,10 @@ public class Arrays {
     private static final int RIGHT_SHIFT_AMOUNT = 56;
     private static final int MOST_SIGNIFICANT_BYTE_INDEX = 7;
     private static final int THREAD_THRESHOLD = 1 << 16;
-    private static final int MERGESORT_THRESHOLD = 512;
+    private static final int MERGESORT_THRESHOLD = 2048;
     private static final int LEAST_SIGNED_BUCKET_INDEX = 128;
-    
-    /**
-     * The wrapper class holding a satellite datum and the key.
-     * 
-     * @param <E> the type of a satellite datum.
-     */
-    public static final class Entry<E> implements Comparable<Entry<E>> {
-        public final long key;
-        public E satelliteData;
-        
-        public Entry(final long key, final E satelliteData) {
-            this.key = key;
-            this.satelliteData = satelliteData;
-        }
-
-        @Override
-        public int compareTo(Entry<E> o) {
-            if (key < o.key) {
-                return -1;
-            } else if (key > o.key) {
-                return 1;
-            } else {
-                return 0;
-            }
-        }
-    }
-        
-    public static <E> boolean isSorted(final Entry<E>[] array, 
-                                       final int fromIndex, 
-                                       final int toIndex) {
-            for (int i = fromIndex; i < toIndex - 1; ++i) {
-                if (array[i].compareTo(array[i + 1]) > 0) {
-                    return false;
-                }
-            }
-            
-            return true;
-    }
-        
-    public static <E> boolean isSorted(final Entry<E>[] array) {
-        return isSorted(array, 0, array.length);
-    }
+ 
+ 
     
     public static <E> void parallelSort(final Entry<E>[] array) {
         parallelSort(array, 0, array.length);
@@ -213,7 +172,6 @@ public class Arrays {
         
         final int[] threadCountMap = new int[SPAWN_DEGREE];
         
-        // 8 / 3 = 2
         for (int i = 0; i != SPAWN_DEGREE; ++i) {
             threadCountMap[i] = THREADS / SPAWN_DEGREE;
         }
@@ -221,6 +179,8 @@ public class Arrays {
         for (int i = 0; i != THREADS % SPAWN_DEGREE; ++i) {
             ++threadCountMap[i];
         }
+        
+        
     }
     
     private static final <E> void sortTopImpl(final Entry<E>[] array,
@@ -404,50 +364,6 @@ public class Arrays {
         }
         
         return (passes & 1) == 0;
-    }
-    
-    public static void main(final String... args) {
-        final long SEED = System.currentTimeMillis();
-        final int SIZE = 10000000;
-        final Random rnd = new Random(SEED);
-        final Entry<Object>[] array1 = createRandomArray(SIZE, rnd);
-        final Entry<Object>[] array2 = array1.clone();
-        final Entry<Object>[] array3 = array1.clone();
-        
-        System.out.println("Seed: " + SEED);
-        
-        long ta = System.currentTimeMillis();
-        parallelSort(array1, 3, array1.length);
-        long tb = System.currentTimeMillis();
-        
-        System.out.println("My parallel sort; time:    " + (tb - ta) + " ms.");
-        System.out.println("Is sorted: " + isSorted(array1, 3, array1.length));
-        
-        ta = System.currentTimeMillis();
-        java.util.Arrays.parallelSort(array2);
-        tb = System.currentTimeMillis();
-        
-        System.out.println("JDK parallel sort; time:   " + (tb - ta) + " ms.");
-        System.out.println("Is sorted: " + isSorted(array2));
-        
-        ta = System.currentTimeMillis();
-        java.util.Arrays.sort(array3);
-        tb = System.currentTimeMillis();
-        
-        System.out.println("JDK sequential sort; time: " + (tb - ta) + " ms.");
-        System.out.println("Is sorted: " + isSorted(array3));
-    }
-    
-    public static final Entry<Object>[] createRandomArray(final int size,
-                                                          final Random rnd) {
-        final Entry[] array = new Entry[size];
-        
-        for (int i = 0; i < size; ++i) {
-            final long key = (((long) rnd.nextInt()) << 32) | rnd.nextInt();
-            array[i] = new Entry<>(key, null);
-        }
-        
-        return array;
     }
     
     private static final class BucketSizeCounter<E> extends Thread {
