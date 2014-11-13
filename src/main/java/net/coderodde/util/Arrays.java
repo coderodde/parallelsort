@@ -5,21 +5,91 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 
+/**
+ * This class contains an implementation of a parallel sorting routine for 
+ * parallel arrays as a set of static class methods. The parallel arrays are 
+ * implemented as arrays of objects of class {@link net.coderodde.util.Entry}, 
+ * which contain the actual
+ * <code>long</code> key, and the reference to the satellite data comprising
+ * whatever is associated with the aforementioned key.
+ * 
+ * The actual algorithm is based on MSD (most-significant digit) radix sort, 
+ * which starts by sorting the array by the most-significant <b>bytes</b>. Each 
+ * possible value of the most significant byte represent a <b>bucket</b>
+ * 
+ * The underlying implementation takes into account the sign bit of each key, so that
+ * all entries whose keys' sign bit is set will precede all the entries whose
+ * keys' sign bit is unset. Also, the underlying implementation sorts
+ * <b>stabily</b> any data (i.e., it preserves the relative order of entries 
+ * with equal keys).
+ * 
+ * @author Rodion Efremov
+ * @version 2014.11.13
+ */
 public class Arrays {
 
+    /**
+     * The amount of buckets considered at each invocation. 
+     * As <tt>log_2(256) = 8</tt>, this implies that the complexity of 
+     * sequential radix sort is <tt>O(kN)</tt>, where <tt>k</tt> is 
+     * between 1 and 8, inclusively.
+     */
     private static final int BUCKETS = 256;
+    
+    /**
+     * The amount of bits considered at each invocation.
+     */
     private static final int BITS_PER_BYTE = 8;
+    
+    /**
+     * The amount of bits to be shifted to the right as to obtain a bucket 
+     * index, which always has values between 0 and 255, inclusively.
+     */
     private static final int RIGHT_SHIFT_AMOUNT = 56;
+    
+    /**
+     * The index of the most significant byte. As the following radix sort
+     * sorts by <code>long</code> keys, the index of the most significant byte
+     * is 7.
+     */
     private static final int MOST_SIGNIFICANT_BYTE_INDEX = 7;
-    private static final int THREAD_THRESHOLD = 1 << 16;
+    
+    /**
+     * The minimum amount of entries to sort for a thread (2^16).
+     */
+    private static final int THREAD_THRESHOLD = 65536;
+    
+    /**
+     * The maximum amount of entries to sort using a merge sort.
+     */
     private static final int MERGESORT_THRESHOLD = 4096;
+    
+    /**
+     * This constant is used only while processing the most significant bytes,
+     * and it denotes the "least" bucket which contains keys with the least
+     * value below zero.
+     */
     private static final int LEAST_SIGNED_BUCKET_INDEX = 128;
     
- 
+    /**
+     * Sorts the entire array containing the 
+     * entries ({@link net.coderodde.util.Entry}).
+     * 
+     * @param <E> the type of actual satellite data.
+     * @param array the array to sort.
+     */
     public static <E> void parallelSort(final Entry<E>[] array) {
         parallelSort(array, 0, array.length);
     }
     
+    /**
+     * Sorts the range <tt>[fromIndex, toIndex)</tt> of the given array.
+     * 
+     * @param <E> the type of actual satellite data.
+     * @param array the array containing requested range.
+     * @param fromIndex the least, inclusive index of the range to sort.
+     * @param toIndex the exclusive index specifying the right end of the range.
+     */
     public static <E> void parallelSort(final Entry<E>[] array,
                                         final int fromIndex,
                                         final int toIndex) {
@@ -31,17 +101,36 @@ public class Arrays {
         parallelSortImplTopLevel(array, buffer, fromIndex, toIndex);
     }
     
+    /**
+     * This method sorts the data by the most significant byte, taking the 
+     * possible set sign bits into consideration.
+     * 
+     * @param <E> The type of entries' satellite data.
+     * @param array the array holding the requested range.
+     * @param buffer the auxiliary copy of <code>array</code>. 
+     * @param fromIndex the least, inclusive index of the range to sort.
+     * @param toIndex the ending index of the range to sort, exclusive.
+     */
     private static <E> void parallelSortImplTopLevel(final Entry<E>[] array,
                                                      final Entry<E>[] buffer,
                                                      final int fromIndex,
                                                      final int toIndex) {
+        // The amount of elements in the requested range.
         final int RANGE_LENGTH = toIndex - fromIndex;
         
         if (RANGE_LENGTH <= MERGESORT_THRESHOLD) {
+            // Once here, the range is too small.
+            
+            // The amount of merge passes needed to sort the input range.
             final int PASSES = (int)(Math.ceil(Math.log(RANGE_LENGTH) /
                                                Math.log(2)));
             
+            // Here, both 'array' and 'buffer' are identical in content.
             if ((PASSES & 1) == 0) {
+                // Once here, there will be an even amount of merge passes, so
+                // it makes sense to pass 'array' as the source array so that
+                // the actual sorted data ends up in it, so there is no need
+                // to copy the sorted range from 'buffer' to 'array'.
                 mergesort(array, buffer, fromIndex, toIndex);
             } else {
                 mergesort(buffer, array, fromIndex, toIndex);
@@ -236,6 +325,7 @@ public class Arrays {
                                               final Entry<E>[] buffer,
                                               final int fromIndex,
                                               final int toIndex) {
+        
         final int[] bucketSizeMap = new int[BUCKETS];
         final int[] startIndexMap = new int[BUCKETS];
         final int[] processedMap  = new int[BUCKETS];
@@ -338,6 +428,7 @@ public class Arrays {
         
         if (byteIndex == 0) {
             // We are done with this bucket.
+            System.out.println("Bottom!");
             return;
         }
         
@@ -670,12 +761,13 @@ public class Arrays {
         }
         
         if (byteIndex == 0) {
-//            System.arraycopy(target,
-//                             fromIndex,
-//                             source,
-//                             fromIndex,
-//                             toIndex - fromIndex);
+            System.arraycopy(target,
+                             fromIndex,
+                             source,
+                             fromIndex,
+                             toIndex - fromIndex);
             // We are done.
+            System.out.println("Reached bottom!");
             return;
         }
         

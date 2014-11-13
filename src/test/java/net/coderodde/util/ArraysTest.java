@@ -36,7 +36,7 @@ public class ArraysTest {
         array[array.length - 1].key = Long.MIN_VALUE;
         
         ta = System.currentTimeMillis();
-        net.coderodde.util.Arrays.parallelSort(array);
+        net.coderodde.util.Arrays.parallelSort(array, 1, array.length - 1);
         tb = System.currentTimeMillis();
         
         System.out.println("Sorted in " + (tb - ta) + " ms.");
