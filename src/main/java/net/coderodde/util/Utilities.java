@@ -29,13 +29,17 @@ public class Utilities {
             toIndex = array.length;
         }
         
+        int gotchas = 0;
+        
         for (int i = fromIndex; i < toIndex - 1; ++i) {
             if (array[i].compareTo(array[i + 1]) > 0) {
-                return false;
+                gotchas++;
             }
         }
 
-        return true;
+        System.out.println("Gothcas: " + gotchas);
+        
+        return gotchas == 0;
     }
         
     /**

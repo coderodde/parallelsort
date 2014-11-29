@@ -627,6 +627,10 @@ public class Arrays {
                                                    final int byteIndex,
                                                    final int fromIndex,
                                                    final int toIndex) {
+        if (byteIndex == 0) {
+            System.out.println("byteIndex: " + byteIndex);
+        }
+        
         final int RANGE_LENGTH = toIndex - fromIndex;
         
         if (RANGE_LENGTH <= MERGESORT_THRESHOLD) {
@@ -664,13 +668,17 @@ public class Arrays {
             return;
         }
         
+        if (byteIndex == 0) {
+            System.out.println(threads + " at bottom.");
+        }
+        
         final BucketSizeCounter[] counters = new BucketSizeCounter[threads];
         final int SUB_RANGE_LENGTH = RANGE_LENGTH / threads;
         int start = fromIndex;
         
         for (int i = 0; i != threads - 1; ++i, start += SUB_RANGE_LENGTH) {
             counters[i] = new BucketSizeCounter<>(source,
-                                                  MOST_SIGNIFICANT_BYTE_INDEX,
+                                                  byteIndex,
                                                   start,
                                                   start + SUB_RANGE_LENGTH);
             counters[i].start();
@@ -678,7 +686,7 @@ public class Arrays {
         
         counters[threads - 1] = 
                 new BucketSizeCounter<>(source,
-                                        MOST_SIGNIFICANT_BYTE_INDEX,
+                                        byteIndex,
                                         start,
                                         toIndex);
         
@@ -702,17 +710,10 @@ public class Arrays {
             }
         }
         
-        startIndexMap[LEAST_SIGNED_BUCKET_INDEX] = fromIndex;
+        // Shit happens here!
+        startIndexMap[0] = fromIndex;
         
-        for (int i = LEAST_SIGNED_BUCKET_INDEX + 1; i != BUCKETS; ++i) {
-            startIndexMap[i] = startIndexMap[i - 1] +
-                               bucketSizeMap[i - 1];
-        }
-        
-        startIndexMap[0] = startIndexMap[BUCKETS - 1] + 
-                           bucketSizeMap[BUCKETS - 1];
-        
-        for (int i = 1; i != LEAST_SIGNED_BUCKET_INDEX; ++i) {
+        for (int i = 1; i != BUCKETS; ++i) {
             startIndexMap[i] = startIndexMap[i - 1] +
                                bucketSizeMap[i - 1];
         }
@@ -737,7 +738,7 @@ public class Arrays {
                                          processedMaps[i],
                                          source,
                                          target,
-                                         MOST_SIGNIFICANT_BYTE_INDEX,
+                                         byteIndex,
                                          startIndex,
                                          startIndex + SUB_RANGE_LENGTH);
             inserters[i].start();
@@ -747,7 +748,7 @@ public class Arrays {
                              processedMaps[threads - 1],
                              source,
                              target,
-                             MOST_SIGNIFICANT_BYTE_INDEX,
+                             byteIndex,
                              startIndex,
                              toIndex).run();
         
@@ -856,7 +857,7 @@ public class Arrays {
             sorters[i].start();
         }
         
-        System.out.println("bi: " + byteIndex);
+        System.out.println("bit: " + byteIndex);
         new Sorter<>(llt.get(SPAWN_DEGREE - 1)).run();
         
         try {

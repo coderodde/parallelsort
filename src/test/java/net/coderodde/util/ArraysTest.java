@@ -15,6 +15,8 @@ public class ArraysTest {
         final int SIZE = 1000000;
         array = new Entry[SIZE];
         
+        // Build an array with long keys in which only the least-significant
+        // byte has some bits set on.
         for (int i = 0; i < SIZE; ++i) {
             array[i] = new Entry<>(rnd.nextLong() & 0xffL, null);
         }
