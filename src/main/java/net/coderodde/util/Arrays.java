@@ -510,7 +510,6 @@ public class Arrays {
         
         if (byteIndex == 0) {
             // There is nowhere to recur, return.
-            System.out.println("Bottom!");
             return;
         }
         
@@ -781,16 +780,27 @@ public class Arrays {
         }
     }
     
+    /**
+     * This static method implements the parallel radix sort on bytes that are
+     * not most-significant. This of use in situations where sorting by the 
+     * previous byte produced less buckets than threads.
+     * 
+     * @param <E> the type of the satellite data in entries.
+     * @param source the array holding the input range.
+     * @param target the array in which elements will be placed in their
+     * respective buckets.
+     * @param threads the amount of threads this call may utilize.
+     * @param byteIndex the index of the byte to use as the sorting key. 0
+     * denotes the least-significant byte.
+     * @param fromIndex the least index of the input range.
+     * @param toIndex the index one past the last of the input range.
+     */
     private static final <E> void parallelSortImpl(final Entry<E>[] source,
                                                    final Entry<E>[] target,
                                                    final int threads,
                                                    final int byteIndex,
                                                    final int fromIndex,
                                                    final int toIndex) {
-        if (byteIndex == 0) {
-            System.out.println("byteIndex: " + byteIndex);
-        }
-        
         final int RANGE_LENGTH = toIndex - fromIndex;
         
         if (RANGE_LENGTH <= MERGESORT_THRESHOLD) {
@@ -824,14 +834,12 @@ public class Arrays {
         }
         
         if (threads < 2) {
+            System.out.println("838");
             sortImpl(source, target, byteIndex, fromIndex, toIndex);
             return;
         }
         
-        if (byteIndex == 0) {
-            System.out.println(threads + " at bottom.");
-        }
-        
+        // Create the bucket size counter threads.
         final BucketSizeCounter[] counters = new BucketSizeCounter[threads];
         final int SUB_RANGE_LENGTH = RANGE_LENGTH / threads;
         int start = fromIndex;
@@ -850,6 +858,8 @@ public class Arrays {
                                         start,
                                         toIndex);
         
+        // Run the last counter in this thread while other are already on their
+        // way.
         counters[threads - 1].run();
         
         try {
@@ -864,13 +874,14 @@ public class Arrays {
         final int[] bucketSizeMap = new int[BUCKETS];
         final int[] startIndexMap = new int[BUCKETS];
         
+        // Count the size of each processed bucket.
         for (int i = 0; i != threads; ++i) {
             for (int j = 0; j != BUCKETS; ++j) {
                 bucketSizeMap[j] += counters[i].localBucketSizeMap[j];
             }
         }
         
-        // Shit happens here!
+        // Prepare the starting indices of each bucket.
         startIndexMap[0] = fromIndex;
         
         for (int i = 1; i != BUCKETS; ++i) {
@@ -878,9 +889,12 @@ public class Arrays {
                                bucketSizeMap[i - 1];
         }
         
+        // Create the inserter threads.
         final BucketInserter<E>[] inserters = new BucketInserter[threads - 1];
         final int[][] processedMaps = new int[threads][BUCKETS];
         
+        // See the docs for parallelSortImplTopLevel for the description of what
+        // happens here.
         for (int i = 1; i != threads; ++i) {
             int[] partialBucketSizeMap = counters[i - 1].localBucketSizeMap;
             
@@ -904,6 +918,7 @@ public class Arrays {
             inserters[i].start();
         }
         
+        // Run the last inserter in this thread while other are on their ways.
         new BucketInserter<>(startIndexMap,
                              processedMaps[threads - 1],
                              source,
@@ -922,13 +937,7 @@ public class Arrays {
         }
         
         if (byteIndex == 0) {
-            System.arraycopy(target,
-                             fromIndex,
-                             source,
-                             fromIndex,
-                             toIndex - fromIndex);
-            // We are done.
-            System.out.println("Reached bottom!");
+            // Nowhere to recur.
             return;
         }
         
@@ -960,7 +969,6 @@ public class Arrays {
         final List<Integer> nonEmptyBucketIndices = 
                 new ArrayList<>(nonEmptyBucketAmount);
         
-        final int OPTIMAL_RANGE = RANGE_LENGTH / SPAWN_DEGREE;
         
         for (int i = 0; i != BUCKETS; ++i) {
             if (bucketSizeMap[i] != 0) {
@@ -971,7 +979,7 @@ public class Arrays {
         Collections.sort(nonEmptyBucketIndices, 
                          new BucketSizeComparator(bucketSizeMap));
         
-        final int OPTIMAL_RANGE_LENGTH = RANGE_LENGTH / SPAWN_DEGREE;
+        final int OPTIMAL_SUBRANGE_LENGTH = RANGE_LENGTH / SPAWN_DEGREE;
         int listIndex = 0;
         int packed = 0;
         int f = 0;
@@ -981,7 +989,8 @@ public class Arrays {
             int tmp = bucketSizeMap[nonEmptyBucketIndices.get(j++)];
             packed += tmp;
             
-            if (packed >= OPTIMAL_RANGE || j == nonEmptyBucketIndices.size()) {
+            if (packed >= OPTIMAL_SUBRANGE_LENGTH
+                    || j == nonEmptyBucketIndices.size()) {
                 packed = 0;
                 
                 for (int i = f; i < j; ++i) {
@@ -1017,7 +1026,6 @@ public class Arrays {
             sorters[i].start();
         }
         
-        System.out.println("bit: " + byteIndex);
         new Sorter<>(llt.get(SPAWN_DEGREE - 1)).run();
         
         try {
@@ -1030,13 +1038,42 @@ public class Arrays {
         }
     }
     
+    /**
+     * This class specifies exactly a subtask of sorting a bucket.
+     * 
+     * @param <E> the type of satellite data of entries.
+     */
     private static final class Task<E> {
         
+        /**
+         * The array holding the input range.
+         */
         private final Entry<E>[] source;
+        
+        /**
+         * The array holding the place for resulting buckets.
+         */
         private final Entry<E>[] target;
+        
+        /**
+         * The amount of threads to use in this task.
+         */
         private final int threads;
+        
+        /**
+         * The index of the byte to use as the key. 0 corresponds to 
+         * least-significant byte.
+         */
         private final int byteIndex;
+        
+        /**
+         * The least index of the input range.
+         */
         private final int fromIndex;
+        
+        /**
+         * The index one past the last of the input range.
+         */
         private final int toIndex;
         
         Task(final Entry<E>[] source,
@@ -1054,6 +1091,10 @@ public class Arrays {
         }
     }
 
+    /**
+     * Implements the comparator, putting the larger buckets to the left of 
+     * holder array.
+     */
     private static final class BucketSizeComparator 
     implements Comparator<Integer> {
         private final int[] bucketSizeMap;

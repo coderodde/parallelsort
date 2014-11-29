@@ -33,13 +33,11 @@ public class Utilities {
         
         for (int i = fromIndex; i < toIndex - 1; ++i) {
             if (array[i].compareTo(array[i + 1]) > 0) {
-                gotchas++;
+                return false;
             }
         }
 
-        System.out.println("Gothcas: " + gotchas);
-        
-        return gotchas == 0;
+        return true;
     }
         
     /**

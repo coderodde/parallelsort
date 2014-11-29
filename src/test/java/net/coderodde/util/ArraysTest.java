@@ -46,5 +46,18 @@ public class ArraysTest {
         assertFalse(isSorted(array));
         assertFalse(isSorted(array, 1, array.length));
         assertFalse(isSorted(array, 0, array.length - 1));
+        
+        array = new Entry[SIZE];
+        
+        for (int i = 0; i < SIZE; ++i) {
+            array[i] = new Entry<>(rnd.nextLong() & 0xff000000000000L, null);
+        }
+        
+        ta = System.currentTimeMillis();
+        net.coderodde.util.Arrays.parallelSort(array);
+        tb = System.currentTimeMillis();
+        
+        System.out.println("Sorted in " + (tb - ta) + " ms.");
+        assertTrue(isSorted(array));
     }
 }
