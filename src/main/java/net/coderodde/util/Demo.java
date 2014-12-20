@@ -1,7 +1,7 @@
 package net.coderodde.util;
 
 import java.util.Random;
-import static net.coderodde.util.Arrays.parallelSort;
+import static net.coderodde.util.CoderoddeArrays.parallelSort;
 import static net.coderodde.util.Utilities.areEqual;
 import static net.coderodde.util.Utilities.isSorted;
 import static net.coderodde.util.Utilities.createRandomArray;

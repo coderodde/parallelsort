@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * This class contains an implementation of a parallel sorting routine for 
@@ -31,7 +32,7 @@ import java.util.List;
  * @author Rodion Efremov
  * @version 2014.11.29
  */
-public class Arrays {
+public class CoderoddeArrays {
 
     /**
      * Denotes the amount of bits for a bucket.
@@ -120,7 +121,7 @@ public class Arrays {
 
         for (int i = 0; i < arrays[0].length; ++i) {
             for (int j = 0; j < arrays.length - 1; ++j) {
-                if (arrays[j][i] != arrays[j + 1][i]) {
+                if (!Objects.equals(arrays[j][i], arrays[j + 1][i])) {
                     return false;
                 }
             }
@@ -170,6 +171,51 @@ public class Arrays {
     }
         
     /**
+     * Sorts the range using merge sort and copies the result into the proper 
+     * array, if needed.
+     * 
+     * @param <E>            the type of satellite data in the entries.
+     * @param source         the source array.
+     * @param target         the target array.
+     * @param recursionDepth the depth of recursion. 0 is top level, 7 is the 
+     *                       bottom one.
+     * @param fromIndex      the least index of the range to sort.
+     * @param toIndex        the exclusive end index of the range to sort.
+     */
+    private static final <E> 
+        void mergesortAndCleanUp(final Entry<E>[] source,
+                                 final Entry<E>[] target,
+                                 final int recursionDepth,
+                                 final int fromIndex, 
+                                 final int toIndex) {
+        final boolean even = mergesort(source, target, fromIndex, toIndex);
+            
+        if (even) {
+            // source contains the sorted bucket.
+            if ((recursionDepth & 1) == 1) {
+                // byteIndex = 6, 4, 2, 0.
+                // source is buffer, copy to target.
+                System.arraycopy(source,
+                                 fromIndex, 
+                                 target,
+                                 fromIndex, 
+                                 toIndex - fromIndex);
+            }
+        } else {
+            // target contains the sorted bucket.
+            if ((recursionDepth & 1) == 0) {
+                // byteIndex = 5, 3, 1.
+                // target is buffer, copy to source.
+                System.arraycopy(target, 
+                                 fromIndex,
+                                 source, 
+                                 fromIndex, 
+                                 toIndex - fromIndex);
+            }
+        }
+    }
+        
+    /**
      * This static method sorts the entry array by bytes that are not
      * most-significant.
      * 
@@ -189,33 +235,11 @@ public class Arrays {
                                            final int toIndex) {
         // Try merge sort.
         if (toIndex - fromIndex <= MERGESORT_THRESHOLD) {
-            // If 'even' is true, the sorted ranged ended up in 'source'.
-            final boolean even = mergesort(source, target, fromIndex, toIndex);
-            
-            if (even) {
-                // source contains the sorted bucket.
-                if ((recursionDepth & 1) == 1) {
-                    // byteIndex = 6, 4, 2, 0.
-                    // source is buffer, copy to target.
-                    System.arraycopy(source,
-                                     fromIndex, 
-                                     target,
-                                     fromIndex, 
-                                     toIndex - fromIndex);
-                }
-            } else {
-                // target contains the sorted bucket.
-                if ((recursionDepth & 1) == 0) {
-                    // byteIndex = 5, 3, 1.
-                    // target is buffer, copy to source.
-                    System.arraycopy(target, 
-                                     fromIndex,
-                                     source, 
-                                     fromIndex, 
-                                     toIndex - fromIndex);
-                }
-            }
-            
+            mergesortAndCleanUp(source, 
+                                target, 
+                                recursionDepth,
+                                fromIndex,
+                                toIndex);
             return;
         }
         
@@ -564,32 +588,11 @@ public class Arrays {
         final int RANGE_LENGTH = toIndex - fromIndex;
         
         if (RANGE_LENGTH <= MERGESORT_THRESHOLD) {
-            final boolean even = mergesort(source, target, fromIndex, toIndex);
-            
-            if (even) {
-                // source contains the sorted bucket.
-                if ((recursionDepth & 1) == 1) {
-                    // byteIndex = 6, 4, 2, 0.
-                    // source is buffer, copy to target.
-                    System.arraycopy(source,
-                                     fromIndex, 
-                                     target,
-                                     fromIndex, 
-                                     toIndex - fromIndex);
-                }
-            } else {
-                // target contains the sorted bucket.
-                if ((recursionDepth & 1) == 0) {
-                    // byteIndex = 5, 3, 1.
-                    // target is buffer, copy to source.
-                    System.arraycopy(target, 
-                                     fromIndex,
-                                     source, 
-                                     fromIndex, 
-                                     toIndex - fromIndex);
-                }
-            }
-            
+            mergesortAndCleanUp(source, 
+                                target, 
+                                recursionDepth,
+                                fromIndex,
+                                toIndex);
             return;
         }
         

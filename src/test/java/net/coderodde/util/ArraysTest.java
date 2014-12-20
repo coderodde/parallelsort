@@ -22,7 +22,7 @@ public class ArraysTest {
         }
         
         long ta = System.currentTimeMillis();
-        net.coderodde.util.Arrays.parallelSort(array);
+        net.coderodde.util.CoderoddeArrays.parallelSort(array);
         long tb = System.currentTimeMillis();
         
         System.out.println("Sorted in " + (tb - ta) + " ms.");
@@ -35,7 +35,7 @@ public class ArraysTest {
         }
         
         ta = System.currentTimeMillis();
-        net.coderodde.util.Arrays.parallelSort(array, 1, array.length - 1);
+        net.coderodde.util.CoderoddeArrays.parallelSort(array, 1, array.length - 1);
         tb = System.currentTimeMillis();
         
         System.out.println("Sorted in " + (tb - ta) + " ms.");
@@ -51,7 +51,7 @@ public class ArraysTest {
         }
         
         ta = System.currentTimeMillis();
-        net.coderodde.util.Arrays.parallelSort(array);
+        net.coderodde.util.CoderoddeArrays.parallelSort(array);
         tb = System.currentTimeMillis();
         
         System.out.println("Sorted in " + (tb - ta) + " ms.");
