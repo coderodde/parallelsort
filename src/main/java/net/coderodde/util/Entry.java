@@ -6,16 +6,16 @@ package net.coderodde.util;
  * @param <E> the type of a satellite datum.
  */
 public final class Entry<E> implements Comparable<Entry<E>> {
-    
+
     /**
      * The sorting key.
      */
-    public long key;
-    
+    private final long key;
+
     /**
      * The satellite data.
      */
-    public E satelliteData;
+    private final E satelliteData;
 
     /**
      * Constructs a new <code>Entry</code> with key <code>key</code> and 
@@ -29,6 +29,14 @@ public final class Entry<E> implements Comparable<Entry<E>> {
         this.satelliteData = satelliteData;
     }
 
+    public long key() {
+        return key;
+    }
+
+    public E satelliteData() {
+        return satelliteData;
+    }
+
     /**
      * Compares this <code>Entry</code> with another.
      * 
@@ -40,12 +48,6 @@ public final class Entry<E> implements Comparable<Entry<E>> {
      */
     @Override
     public int compareTo(Entry<E> o) {
-        if (key < o.key) {
-            return -1;
-        } else if (key > o.key) {
-            return 1;
-        } else {
-            return 0;
-        }
+        return Long.compare(key, o.key);
     }
 }

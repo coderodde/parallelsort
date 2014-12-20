@@ -34,30 +34,27 @@ import java.util.List;
 public class Arrays {
 
     /**
+     * Denotes the amount of bits for a bucket.
+     */
+    private static final int BITS_PER_BUCKET = 8;
+    
+    /**
      * The amount of buckets considered at each invocation. 
      * As <tt>log_2(256) = 8</tt>, this implies that the complexity of 
      * sequential radix sort is <tt>O(kN)</tt>, where <tt>k</tt> is 
      * between 1 and 8, inclusively.
      */
-    private static final int BUCKETS = 256;
+    private static final int BUCKETS = 1 << BITS_PER_BUCKET;
     
     /**
-     * The amount of bits considered at each invocation.
+     * The mask for extracting the bucket bits.
      */
-    private static final int BITS_PER_BYTE = 8;
+    private static final int BUCKET_MASK = BUCKETS - 1;
     
     /**
-     * The amount of bits to be shifted to the right as to obtain a bucket 
-     * index, which always has values between 0 and 255, inclusively.
+     * The mask needed to manipulate the sign bit.
      */
-    private static final int RIGHT_SHIFT_AMOUNT = 56;
-    
-    /**
-     * The index of the most significant byte. As the following radix sort
-     * sorts by <code>long</code> keys, the index of the most significant byte
-     * is 7.
-     */
-    private static final int MOST_SIGNIFICANT_BYTE_INDEX = 7;
+    private static final long SIGN_MASK = 1L << 63;
     
     /**
      * The minimum amount of entries to sort for a thread (2^16).
@@ -68,13 +65,6 @@ public class Arrays {
      * The maximum amount of entries to sort using a merge sort.
      */
     private static final int MERGESORT_THRESHOLD = 4096;
-    
-    /**
-     * This constant is used only while processing the most significant bytes,
-     * and it denotes the "least" bucket which contains keys with the least
-     * value below zero.
-     */
-    private static final int LEAST_SIGNED_BUCKET_INDEX = 128;
     
     /**
      * Sorts the entire array containing the 
@@ -98,334 +88,87 @@ public class Arrays {
     public static <E> void parallelSort(final Entry<E>[] array,
                                         final int fromIndex,
                                         final int toIndex) {
-        if (toIndex - fromIndex < 2) {
+        final int RANGE_LENGTH = toIndex - fromIndex;
+        
+        if (RANGE_LENGTH < 2) {
             return;
         }
         
         final Entry<E>[] buffer = array.clone();
-        parallelSortImplTopLevel(array, buffer, fromIndex, toIndex);
+        final int threads = Math.min(RANGE_LENGTH / THREAD_THRESHOLD, 
+                                     Runtime.getRuntime()
+                                            .availableProcessors());
+        parallelSortImpl(array, buffer, threads, 0, fromIndex, toIndex);
     }
     
     /**
-     * This method sorts the data by the most significant byte, taking the 
-     * possible set sign bits into consideration.
+     * Checks whether the input arrays are of the same length, and have exactly
+     * the same references at each component.
      * 
-     * @param <E> The type of entries' satellite data.
-     * @param array the array holding the requested range.
-     * @param buffer the auxiliary copy of <code>array</code>. 
-     * @param fromIndex the least, inclusive index of the range to sort.
-     * @param toIndex the ending index of the range to sort, exclusive.
+     * @param <E> the type of satellite data.
+     * @param arrays the array of arrays.
+     * 
+     * @return <code>true</code> if the arrays are equal. <code>false</code>
+     *         otherwise.
      */
-    private static <E> void parallelSortImplTopLevel(final Entry<E>[] array,
-                                                     final Entry<E>[] buffer,
-                                                     final int fromIndex,
-                                                     final int toIndex) {
-        // The amount of elements in the requested range.
-        final int RANGE_LENGTH = toIndex - fromIndex;
-        
-        if (RANGE_LENGTH <= MERGESORT_THRESHOLD) {
-            // Once here, the range is too small, use merge sort.
-            
-            // The amount of merge passes needed to sort the input range.
-            final int PASSES = (int)(Math.ceil(Math.log(RANGE_LENGTH) /
-                                               Math.log(2)));
-            
-            // Here, both 'array' and 'buffer' are identical in content.
-            if ((PASSES & 1) == 0) {
-                // Once here, there will be an even amount of merge passes, so
-                // it makes sense to pass 'array' as the source array so that
-                // the actual sorted data ends up in it, so there is no need
-                // to copy the sorted range from 'buffer' to 'array'.
-                mergesort(array, buffer, fromIndex, toIndex);
-            } else {
-                // A symmetric case: sort using 'buffer' as the source array
-                // so that the sorted data ends up in 'array' and we don't have
-                // to do additional copying.
-                mergesort(buffer, array, fromIndex, toIndex);
-            }
-            
-            return;
-        }
-        
-        final int THREADS = Math.min(Runtime.getRuntime().availableProcessors(),
-                                     RANGE_LENGTH / THREAD_THRESHOLD);
-        
-        if (THREADS < 2) {
-            // No threads available, just use the sequential version so as to
-            // have slighly better constant factors.
-            sortTopImpl(array, buffer, fromIndex, toIndex);
-            return;
-        }
-        
-        // Create the threads counting sizes of each present bucket.
-        final BucketSizeCounter[] counters = new BucketSizeCounter[THREADS];
-        final int SUB_RANGE_LENGTH = RANGE_LENGTH / THREADS;
-        int start = fromIndex;
-        
-        for (int i = 0; i != THREADS - 1; ++i, start += SUB_RANGE_LENGTH) {
-            counters[i] = new BucketSizeCounter<>(array,
-                                                  MOST_SIGNIFICANT_BYTE_INDEX,
-                                                  start,
-                                                  start + SUB_RANGE_LENGTH);
-            counters[i].start();
-        }
-        
-        // The last one will be run in this thread while the other run in 
-        // parallel.
-        counters[THREADS - 1] = 
-                new BucketSizeCounter<>(array,
-                                        MOST_SIGNIFICANT_BYTE_INDEX,
-                                        start,
-                                        toIndex);
-        
-        counters[THREADS - 1].run();
-        
-        try {
-            for (int i = 0; i != THREADS - 1; ++i) {
-                counters[i].join();
-            }
-        } catch (final InterruptedException ie) {
-            ie.printStackTrace();
-            return;
-        }
-        
-        final int[] bucketSizeMap = new int[BUCKETS];
-        final int[] startIndexMap = new int[BUCKETS];
-        
-        // Create the global bucket size map by summing the sizes of each
-        // bucket in each thread.
-        for (int i = 0; i != THREADS; ++i) {
-            for (int j = 0; j != BUCKETS; ++j) {
-                bucketSizeMap[j] += counters[i].localBucketSizeMap[j];
+    public static final <E> boolean areEqual(final Entry<E>[]... arrays) {
+        for (int i = 0; i < arrays.length - 1; ++i) {
+            if (arrays[i].length != arrays[i + 1].length) {
+                return false;
             }
         }
-        
-        // This is the special treatment of buckets, the one that should end up
-        // in the least indices of the range to sort has as its byte value
-        // '128', which is the least value with the sign bit set.
-        startIndexMap[LEAST_SIGNED_BUCKET_INDEX] = fromIndex;
-        
-        for (int i = LEAST_SIGNED_BUCKET_INDEX + 1; i != BUCKETS; ++i) {
-            startIndexMap[i] = startIndexMap[i - 1] +
-                               bucketSizeMap[i - 1];
-        }
-        
-        startIndexMap[0] = startIndexMap[BUCKETS - 1] + 
-                           bucketSizeMap[BUCKETS - 1];
-        
-        for (int i = 1; i != LEAST_SIGNED_BUCKET_INDEX; ++i) {
-            startIndexMap[i] = startIndexMap[i - 1] +
-                               bucketSizeMap[i - 1];
-        }
-        
-        // Here, the 'startIndexMap' is initialized.
-        // Next, create the threads for inserting the buckets in the scanned
-        // array to another one. This is a time-memory trade-off.
-        final BucketInserter<E>[] inserters = new BucketInserter[THREADS - 1];
-        // This map is used to make the inserter threads independent of each
-        // other. For each thread 0, 1, ..., P - 1, thread 'i' will obtain
-        // the array 'processedMaps[i]', and each of thea arrays will have 
-        // 'BUCKETS' components. Each component denotes how much entries in the 
-        // target array a thread 'i' should skip so as to not interfere with the 
-        // range processed by the thread with index 'i - 1'.
-        
-        // For instance, assume there is 4 threads and bucket 0xAB is of length
-        // 12 entries, 2 leftmost entries where scanned by counter 0,
-        // 3 by counter 1, 4 by counter 2, 3 by counter 3. Also the starting
-        // index of the bucket is j; now, inserter thread 0 will have 0 as its
-        // processedMaps[0xAB] and will insert only to range [j, j + 2), 
-        // inserter thread 1 will have 2 as its processedMaps[0xAB] and will work
-        // on range [j + 2, j + 5), inserter thread 2 [j + 5, j + 9), and 
-        // inserter 3 [j + 9, j + 12).
-        final int[][] processedMaps = new int[THREADS][BUCKETS];
-        
-        for (int i = 1; i != THREADS; ++i) {
-            int[] partialBucketSizeMap = counters[i - 1].localBucketSizeMap;
-            
-            for (int j = 0; j != BUCKETS; ++j) {
-                processedMaps[i][j] = 
-                        processedMaps[i - 1][j] + partialBucketSizeMap[j];
+
+        for (int i = 0; i < arrays[0].length; ++i) {
+            for (int j = 0; j < arrays.length - 1; ++j) {
+                if (arrays[j][i] != arrays[j + 1][i]) {
+                    return false;
+                }
             }
         }
-        
-        int startIndex = fromIndex;
-        
-        // Create the inserter threads and spawn them.
-        for (int i = 0; i != THREADS - 1; ++i, startIndex += SUB_RANGE_LENGTH) {
-            inserters[i] =
-                    new BucketInserter<>(startIndexMap,
-                                         processedMaps[i],
-                                         array,
-                                         buffer,
-                                         MOST_SIGNIFICANT_BYTE_INDEX,
-                                         startIndex,
-                                         startIndex + SUB_RANGE_LENGTH);
-            inserters[i].start();
-        }
-        
-        // Run the last inserter in this thread.
-        new BucketInserter<>(startIndexMap,
-                             processedMaps[THREADS - 1],
-                             array,
-                             buffer,
-                             MOST_SIGNIFICANT_BYTE_INDEX,
-                             startIndex,
-                             toIndex).run();
-        
-        try {
-            for (int i = 0; i != THREADS - 1; ++i) {
-                inserters[i].join();
-            }
-        } catch (final InterruptedException ie) {
-            ie.printStackTrace();
-            return;
-        }
-        
-        int nonEmptyBucketAmount = 0;
-        
-        for (int i : bucketSizeMap) {
-            if (i != 0) {
-                ++nonEmptyBucketAmount;
-            }
-        }
-        
-        // Decide how much threads to allocate. 
-        final int SPAWN_DEGREE = Math.min(nonEmptyBucketAmount, THREADS);
-        final List<Integer>[] bucketIndexListArray = new List[SPAWN_DEGREE];
-        
-        for (int i = 0; i != SPAWN_DEGREE; ++i) {
-            bucketIndexListArray[i] = new ArrayList<>(nonEmptyBucketAmount);
-        }
-        
-        // Each component i of the array below will denote how much threads to
-        // "inherit" for thread i.
-        final int[] threadCountMap = new int[SPAWN_DEGREE];
-        
-        for (int i = 0; i != SPAWN_DEGREE; ++i) {
-            threadCountMap[i] = THREADS / SPAWN_DEGREE;
-        }
-        
-        for (int i = 0; i != THREADS % SPAWN_DEGREE; ++i) {
-            ++threadCountMap[i];
-        }
-        
-        final Sorter[] sorters = new Sorter[SPAWN_DEGREE];
-        final List<Integer> bucketIndexList = new ArrayList<>(BUCKETS);
-        
-        for (int i = 0; i != BUCKETS; ++i) {
-            if (bucketSizeMap[i] > 0) {
-                bucketIndexList.add(i);
-            }
-        }
-        
-        // bucketIndexList is descending in bucket size. This is a pathetic way
-        // of trying to balance the workload between the threads. Or we could
-        // hang the CPU while indulging ourselves in running some optimal, 
-        // NP-hard load-balancing routine.
-        Collections.sort(bucketIndexList, 
-                         new BucketSizeComparator(bucketSizeMap));
-        
-        final int OPTIMAL_SUBRANGE_LENGTH = RANGE_LENGTH / SPAWN_DEGREE;
-        // This list will describe the subsorting tasks for each thread.
-        final List<List<Task<E>>> tll = new ArrayList<>(SPAWN_DEGREE);
-        int bucketIndex = 0;
-        
-        for (int i = 0; i != SPAWN_DEGREE; ++i) {
-            final List<Task<E>> tl = new ArrayList<>();
-            int packed = 0;
-            
-            while (packed < OPTIMAL_SUBRANGE_LENGTH && bucketIndex < BUCKETS) {
-                tl.add(new Task<>(buffer,
-                                  array,
-                                  threadCountMap[SPAWN_DEGREE - 1 - i],
-                                  MOST_SIGNIFICANT_BYTE_INDEX - 1,
-                                  startIndexMap[bucketIndex],
-                                  startIndexMap[bucketIndex] + // Note the '+'!
-                                  bucketSizeMap[bucketIndex]));
-                packed += bucketSizeMap[bucketIndex];
-                ++bucketIndex;
-            }
-            
-            tll.add(tl);
-        }
-        
-        for (int i = 0; i != SPAWN_DEGREE - 1; ++i) {
-            sorters[i] = new Sorter<>(tll.get(i));
-            sorters[i].start();
-        }
-        
-        new Sorter<>(tll.get(SPAWN_DEGREE - 1)).run();
-        
-        try {
-            for (int i = 0; i != SPAWN_DEGREE - 1; ++i) {
-                sorters[i].join();
-            }
-        } catch (final InterruptedException ie) {
-            ie.printStackTrace();
-            return;
-        }
+
+        return true;
     }
     
     /**
-     * This static method sorts sequentially an entry array by most-significant
-     * bytes.
+     * Checks whether the range <code>array[fromIndex, toIndex)</code> is 
+     * sorted.
      * 
-     * @param <E> the type of satellite data of each entry.
-     * @param array the actual array to sort.
-     * @param buffer the auxiliary buffer.
-     * @param fromIndex the least index of the range to sort.
-     * @param toIndex the index one past the last index of the range to sort.
+     * @param <E> the type of entries' satellite data.
+     * @param array the actual array.
+     * @param fromIndex the least index of the range to check.
+     * @param toIndex the index pointing to the one past the last index of the
+     *        range.
+     * 
+     * @return <code>true</code> if the range is sorted. <code>false</code> 
+     *         otherwise.
      */
-    private static final <E> void sortTopImpl(final Entry<E>[] array,
-                                              final Entry<E>[] buffer,
-                                              final int fromIndex,
-                                              final int toIndex) {
-        
-        final int[] bucketSizeMap = new int[BUCKETS];
-        final int[] startIndexMap = new int[BUCKETS];
-        final int[] processedMap  = new int[BUCKETS];
-        
-        // Determine the size of each bucket.
-        for (int i = fromIndex; i < toIndex; ++i) {
-            bucketSizeMap[(int)(array[i].key >>> RIGHT_SHIFT_AMOUNT)]++;
-        }
-        
-        // BEGIN: Special sign bit magic.
-        startIndexMap[LEAST_SIGNED_BUCKET_INDEX] = fromIndex;
-        
-        for (int i = LEAST_SIGNED_BUCKET_INDEX + 1; i != BUCKETS; ++i) {
-            startIndexMap[i] = startIndexMap[i - 1] +
-                               bucketSizeMap[i - 1];
-        }
-        
-        startIndexMap[0] = startIndexMap[BUCKETS - 1] +
-                           bucketSizeMap[BUCKETS - 1];
-        
-        for (int i = 1; i != LEAST_SIGNED_BUCKET_INDEX; ++i) {
-            startIndexMap[i] = startIndexMap[i - 1] +
-                               bucketSizeMap[i - 1];
-        }
-        // END: Special sign bit magic.
-        
-        // Insert elements into their respective buckets in the buffer array.
-        for (int i = fromIndex; i < toIndex; ++i) {
-            final Entry<E> e = array[i];
-            final int index = (int)(e.key >>> RIGHT_SHIFT_AMOUNT);
-            buffer[startIndexMap[index] + processedMap[index]++] = e;
-        }
-        
-        // Recur to sort all non-empty buckets.
-        for (int i = 0; i != BUCKETS; ++i) {
-            if (bucketSizeMap[i] != 0) {
-                sortImpl(buffer,
-                         array,
-                         MOST_SIGNIFICANT_BYTE_INDEX - 1,
-                         startIndexMap[i],
-                         startIndexMap[i] + bucketSizeMap[i]);
+    public static final <E extends Comparable<? super E>> 
+        boolean isSorted(final E[] array, 
+                         final int fromIndex,
+                         final int toIndex) {
+        for (int i = fromIndex; i < toIndex - 1; ++i) {
+            if (array[i].compareTo(array[i + 1]) > 0) {
+                return false;
             }
         }
+
+        return true;
     }
-    
+
+    /**
+     * Checks whether the entire input array is sorted.
+     * 
+     * @param <E>   the type of the entries' satellite data.
+     * @param array the array to check.
+     * 
+     * @return      <code>true</code> if the entire array is sorted. 
+     *              <code>false</code> otherwise.
+     */
+    public static final <E extends Comparable<? super E>>
+        boolean isSorted(final E[] array) {
+        return isSorted(array, 0, array.length);       
+    }
+        
     /**
      * This static method sorts the entry array by bytes that are not
      * most-significant.
@@ -441,7 +184,7 @@ public class Arrays {
      */
     private static final <E> void sortImpl(final Entry<E>[] source,
                                            final Entry<E>[] target,
-                                           final int byteIndex,
+                                           final int recursionDepth,
                                            final int fromIndex,
                                            final int toIndex) {
         // Try merge sort.
@@ -451,7 +194,7 @@ public class Arrays {
             
             if (even) {
                 // source contains the sorted bucket.
-                if ((byteIndex & 1) == 0) {
+                if ((recursionDepth & 1) == 1) {
                     // byteIndex = 6, 4, 2, 0.
                     // source is buffer, copy to target.
                     System.arraycopy(source,
@@ -462,7 +205,7 @@ public class Arrays {
                 }
             } else {
                 // target contains the sorted bucket.
-                if ((byteIndex & 1) == 1) {
+                if ((recursionDepth & 1) == 0) {
                     // byteIndex = 5, 3, 1.
                     // target is buffer, copy to source.
                     System.arraycopy(target, 
@@ -480,15 +223,9 @@ public class Arrays {
         final int[] startIndexMap = new int[BUCKETS];
         final int[] processedMap  = new int[BUCKETS];
         
-        // We need this as to get rid of the bits on the left from the byte we
-        // are interesed in.
-        final int LEFT_SHIFT_AMOUNT =
-                BITS_PER_BYTE * (MOST_SIGNIFICANT_BYTE_INDEX - byteIndex);
-        
         // Compute the size of each bucket.
         for (int i = fromIndex; i < toIndex; ++i) {
-            bucketSizeMap[(int)((source[i].key << LEFT_SHIFT_AMOUNT)
-                                             >>> RIGHT_SHIFT_AMOUNT)]++;
+            bucketSizeMap[getBucket(source[i].key(), recursionDepth)]++;
         }
         
         // Initialize the start index map.
@@ -503,12 +240,11 @@ public class Arrays {
         // Insert the entries from 'source' into their respective 'target'.
         for (int i = fromIndex; i < toIndex; ++i) {
             final Entry<E> e = source[i];
-            final int index = (int)((e.key << LEFT_SHIFT_AMOUNT)
-                                         >>> RIGHT_SHIFT_AMOUNT);
+            final int index = getBucket(source[i].key(), recursionDepth);
             target[startIndexMap[index] + processedMap[index]++] = e;
         }
         
-        if (byteIndex == 0) {
+        if (recursionDepth == 7) {
             // There is nowhere to recur, return.
             return;
         }
@@ -518,7 +254,7 @@ public class Arrays {
             if (bucketSizeMap[i] != 0) {
                 sortImpl(target,
                          source,
-                         byteIndex - 1,
+                         recursionDepth + 1,
                          startIndexMap[i],
                          startIndexMap[i] + bucketSizeMap[i]);
             }
@@ -565,7 +301,7 @@ public class Arrays {
                 final int rightBound = Math.min(toIndex, right + width);
                 
                 while (left < leftBound && right < rightBound) {
-                    t[i++] = s[right].key < s[left].key ?
+                    t[i++] = s[right].key() < s[left].key() ?
                              s[right++] :
                              s[left++];
                 }
@@ -608,10 +344,9 @@ public class Arrays {
         private final Entry<E>[] source;
         
         /**
-         * Specifies the index of the byte to use as the bucket key. 0 
-         * corresponds to the least-significant byte.
+         * The depth of recursion. 0 is top level, 7 is the bottom one.
          */
-        private final int byteIndex;
+        private final int recursionDepth;
         
         /**
          * Specifies the least index of the range to process.
@@ -624,11 +359,11 @@ public class Arrays {
         private final int toIndex;
         
         BucketSizeCounter(final Entry<E>[] source,
-                          final int byteIndex,
+                          final int recursionDepth,
                           final int fromIndex,
                           final int toIndex) {
             this.source = source;
-            this.byteIndex = byteIndex;
+            this.recursionDepth = recursionDepth;
             this.fromIndex = fromIndex;
             this.toIndex = toIndex;
         }
@@ -637,22 +372,9 @@ public class Arrays {
         public void run() {
             this.localBucketSizeMap = new int[BUCKETS];
             
-            if (byteIndex == MOST_SIGNIFICANT_BYTE_INDEX) {
-                // A mild optimization.
-                for (int i = fromIndex; i < toIndex; ++i) {
-                    ++localBucketSizeMap[(int)(source[i].key
-                                         >>> RIGHT_SHIFT_AMOUNT)];
-                }
-            } else {
-                final int LEFT_SHIFT_AMOUNT = 
-                        BITS_PER_BYTE * 
-                        (MOST_SIGNIFICANT_BYTE_INDEX - byteIndex);
-                
-                for (int i = fromIndex; i < toIndex; ++i) {
-                    ++localBucketSizeMap[(int)
-                                         ((source[i].key << LEFT_SHIFT_AMOUNT)
-                                         >>> RIGHT_SHIFT_AMOUNT)];
-                }
+            for (int i = fromIndex; i < toIndex; ++i) {
+                localBucketSizeMap[getBucket(source[i].key(), 
+                                   recursionDepth)]++;
             }
         }
     }
@@ -686,10 +408,9 @@ public class Arrays {
         private final Entry<E>[] target;
         
         /**
-         * Specifies the index of the byte to use as the bucket key. 0 
-         * corresponds to the least-significant byte.
+         * The depth of recursion. 0 is top level, 7 is the bottom one.
          */
-        private final int byteIndex;
+        private final int recursionDepth;
         
         /**
          * The least index of the range to process.
@@ -705,37 +426,24 @@ public class Arrays {
                        final int[] processedMap,
                        final Entry<E>[] source,
                        final Entry<E>[] target,
-                       final int byteIndex,
+                       final int recursionDepth,
                        final int fromIndex,
                        final int toIndex) {
             this.startIndexMap = startIndexMap;
             this.processedMap = processedMap;
             this.source = source;
             this.target = target;
-            this.byteIndex = byteIndex;
+            this.recursionDepth = recursionDepth;
             this.fromIndex = fromIndex;
             this.toIndex = toIndex;
         }
         
         @Override
         public void run() {
-            if (byteIndex == MOST_SIGNIFICANT_BYTE_INDEX) {
-                // Mild optimization.
-                for (int i = fromIndex; i < toIndex; ++i) {
-                    final Entry<E> e = source[i];
-                    final int index = (int)(e.key >>> RIGHT_SHIFT_AMOUNT);
-                    target[startIndexMap[index] + processedMap[index]++] = e;
-                }
-            } else {
-                final int LEFT_SHIFT_AMOUNT = BITS_PER_BYTE *
-                        (MOST_SIGNIFICANT_BYTE_INDEX - byteIndex);
-                
-                for (int i = fromIndex; i < toIndex; ++i) {
-                    final Entry e = source[i];
-                    final int index = (int)((e.key << LEFT_SHIFT_AMOUNT)
-                                                 >>> RIGHT_SHIFT_AMOUNT);
-                    target[startIndexMap[index] + processedMap[index]++] = e;
-                }
+            for (int i = fromIndex; i < toIndex; ++i) {
+                final Entry<E> e = source[i];
+                final int index = getBucket(e.key(), recursionDepth);
+                target[startIndexMap[index] + processedMap[index]++] = e;
             }
         }
     }
@@ -766,17 +474,69 @@ public class Arrays {
                     parallelSortImpl(task.source,
                                      task.target,
                                      task.threads,
-                                     task.byteIndex,
+                                     task.recursionDepth,
                                      task.fromIndex,
                                      task.toIndex);
                 } else {
                     sortImpl(task.source,
                              task.target,
-                             task.byteIndex,
+                             task.recursionDepth,
                              task.fromIndex,
                              task.toIndex);
                 }
             }
+        }
+    }
+    
+    /**
+     * This class specifies exactly a subtask of sorting a bucket.
+     * 
+     * @param <E> the type of satellite data of entries.
+     */
+    private static final class Task<E> {
+        
+        /**
+         * The array holding the input range.
+         */
+        private final Entry<E>[] source;
+        
+        /**
+         * The array holding the place for resulting buckets.
+         */
+        private final Entry<E>[] target;
+        
+        /**
+         * The amount of threads to use in this task.
+         */
+        private final int threads;
+        
+        /**
+         * The depth of recursion. 0 is the top level, 7 is the bottom one.
+         */
+        private final int recursionDepth;
+        
+        /**
+         * The least index of the input range.
+         */
+        private final int fromIndex;
+        
+        /**
+         * The index one past the last of the input range.
+         */
+        private final int toIndex;
+        
+        Task(final Entry<E>[] source,
+             final Entry<E>[] target,
+             final int threads,
+             final int recursionDepth,
+             final int fromIndex,
+             final int toIndex) {
+            this.source = source;
+            this.target = target;
+            this.threads = threads;
+            this.recursionDepth = recursionDepth;
+            this.fromIndex = fromIndex;
+            this.toIndex = toIndex;
         }
     }
     
@@ -798,7 +558,7 @@ public class Arrays {
     private static final <E> void parallelSortImpl(final Entry<E>[] source,
                                                    final Entry<E>[] target,
                                                    final int threads,
-                                                   final int byteIndex,
+                                                   final int recursionDepth,
                                                    final int fromIndex,
                                                    final int toIndex) {
         final int RANGE_LENGTH = toIndex - fromIndex;
@@ -808,7 +568,7 @@ public class Arrays {
             
             if (even) {
                 // source contains the sorted bucket.
-                if ((byteIndex & 1) == 0) {
+                if ((recursionDepth & 1) == 1) {
                     // byteIndex = 6, 4, 2, 0.
                     // source is buffer, copy to target.
                     System.arraycopy(source,
@@ -819,7 +579,7 @@ public class Arrays {
                 }
             } else {
                 // target contains the sorted bucket.
-                if ((byteIndex & 1) == 1) {
+                if ((recursionDepth & 1) == 0) {
                     // byteIndex = 5, 3, 1.
                     // target is buffer, copy to source.
                     System.arraycopy(target, 
@@ -834,8 +594,7 @@ public class Arrays {
         }
         
         if (threads < 2) {
-            System.out.println("838");
-            sortImpl(source, target, byteIndex, fromIndex, toIndex);
+            sortImpl(source, target, recursionDepth, fromIndex, toIndex);
             return;
         }
         
@@ -846,7 +605,7 @@ public class Arrays {
         
         for (int i = 0; i != threads - 1; ++i, start += SUB_RANGE_LENGTH) {
             counters[i] = new BucketSizeCounter<>(source,
-                                                  byteIndex,
+                                                  recursionDepth,
                                                   start,
                                                   start + SUB_RANGE_LENGTH);
             counters[i].start();
@@ -854,7 +613,7 @@ public class Arrays {
         
         counters[threads - 1] = 
                 new BucketSizeCounter<>(source,
-                                        byteIndex,
+                                        recursionDepth,
                                         start,
                                         toIndex);
         
@@ -912,7 +671,7 @@ public class Arrays {
                                          processedMaps[i],
                                          source,
                                          target,
-                                         byteIndex,
+                                         recursionDepth,
                                          startIndex,
                                          startIndex + SUB_RANGE_LENGTH);
             inserters[i].start();
@@ -923,7 +682,7 @@ public class Arrays {
                              processedMaps[threads - 1],
                              source,
                              target,
-                             byteIndex,
+                             recursionDepth,
                              startIndex,
                              toIndex).run();
         
@@ -936,7 +695,7 @@ public class Arrays {
             return;
         }
         
-        if (byteIndex == 0) {
+        if (recursionDepth == 7) {
             // Nowhere to recur.
             return;
         }
@@ -1013,7 +772,7 @@ public class Arrays {
                 lt.add(new Task<>(target,
                                   source,
                                   threadCountMap[i],
-                                  byteIndex - 1,
+                                  recursionDepth + 1,
                                   startIndexMap[idx],
                                   startIndexMap[idx] + bucketSizeMap[idx]));
             }
@@ -1039,59 +798,6 @@ public class Arrays {
     }
     
     /**
-     * This class specifies exactly a subtask of sorting a bucket.
-     * 
-     * @param <E> the type of satellite data of entries.
-     */
-    private static final class Task<E> {
-        
-        /**
-         * The array holding the input range.
-         */
-        private final Entry<E>[] source;
-        
-        /**
-         * The array holding the place for resulting buckets.
-         */
-        private final Entry<E>[] target;
-        
-        /**
-         * The amount of threads to use in this task.
-         */
-        private final int threads;
-        
-        /**
-         * The index of the byte to use as the key. 0 corresponds to 
-         * least-significant byte.
-         */
-        private final int byteIndex;
-        
-        /**
-         * The least index of the input range.
-         */
-        private final int fromIndex;
-        
-        /**
-         * The index one past the last of the input range.
-         */
-        private final int toIndex;
-        
-        Task(final Entry<E>[] source,
-             final Entry<E>[] target,
-             final int threads,
-             final int byteIndex,
-             final int fromIndex,
-             final int toIndex) {
-            this.source = source;
-            this.target = target;
-            this.threads = threads;
-            this.byteIndex = byteIndex;
-            this.fromIndex = fromIndex;
-            this.toIndex = toIndex;
-        }
-    }
-
-    /**
      * Implements the comparator, putting the larger buckets to the left of 
      * holder array.
      */
@@ -1109,5 +815,11 @@ public class Arrays {
             final int sz2 = bucketSizeMap[i2];
             return sz2 - sz1;
         }
+    }
+    
+    private static final int getBucket(final long key, 
+                                       final int recursionDepth) {
+        final int bitShift = 64 - (recursionDepth + 1) * BITS_PER_BUCKET;
+        return (int)((key ^ SIGN_MASK) >>> bitShift) & BUCKET_MASK;
     }
 }

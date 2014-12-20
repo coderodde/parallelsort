@@ -54,7 +54,7 @@ public class UtilitiesTest {
         
         for (final Entry<Object> e : array) {
             assertNotNull(e);
-            assertNull(e.satelliteData);
+            assertNull(e.satelliteData());
         }
     }
 }

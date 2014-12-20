@@ -34,9 +34,6 @@ public class ArraysTest {
             array[i] = new Entry<>(rnd.nextLong() & 0xff00000000000000L, null);
         }
         
-        array[0].key = Long.MAX_VALUE;
-        array[array.length - 1].key = Long.MIN_VALUE;
-        
         ta = System.currentTimeMillis();
         net.coderodde.util.Arrays.parallelSort(array, 1, array.length - 1);
         tb = System.currentTimeMillis();
