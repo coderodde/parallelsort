@@ -264,7 +264,7 @@ public class CoderoddeArrays {
         // Insert the entries from 'source' into their respective 'target'.
         for (int i = fromIndex; i < toIndex; ++i) {
             final Entry<E> e = source[i];
-            final int index = getBucket(source[i].key(), recursionDepth);
+            final int index = getBucket(e.key(), recursionDepth);
             target[startIndexMap[index] + processedMap[index]++] = e;
         }
         
