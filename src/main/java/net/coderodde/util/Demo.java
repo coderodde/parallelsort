@@ -8,9 +8,30 @@ import static net.coderodde.util.Utilities.createRandomArray;
 
 public class Demo {
 
-    public static void main(final String... args) {
+    public static void main(String[] args) {
+        benchmarkLongArrays();
+    }
+    
+    public static void benchmarkLongArrays() {
         final long SEED = System.currentTimeMillis();
-        final int SIZE = 10000000;
+        final int SIZE = 60_000_000;
+        final Random rnd = new Random(SEED);
+        final long[] array1 = createRandomLongArray(SIZE, rnd);
+        final long[] array2 = array1.clone();
+        final long[] array3 = array1.clone();
+        
+        long startTime = System.currentTimeMillis();
+        
+        parallelSort(array1);
+        
+        long endTime = System.currentTimeMillis();
+        
+        
+    }
+    
+    public static void benchmarkParallelArrays() {
+        final long SEED = System.currentTimeMillis();
+        final int SIZE = 60_000_000;
         final Random rnd = new Random(SEED);
         final Entry<Object>[] array1 = createRandomArray(SIZE, rnd);
         final Entry<Object>[] array2 = array1.clone();
@@ -42,5 +63,15 @@ public class Demo {
         System.out.println("All arrays equal: " + areEqual(array1, 
                                                            array2, 
                                                            array3));
+    }
+
+    private static long[] createRandomLongArray(int size, Random rnd) {
+        long[] array = new long[size];
+        
+        for (int i = 0; i != size; i++) {
+            array[i] = rnd.nextLong();
+        }
+        
+        return array;
     }
 }
