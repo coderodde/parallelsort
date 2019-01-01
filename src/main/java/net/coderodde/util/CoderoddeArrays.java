@@ -6,6 +6,8 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * This class contains an implementation of a parallel sorting routine for 
@@ -217,17 +219,24 @@ public class CoderoddeArrays {
                                            sourceArray,
                                            targetArray,
                                            recursionDepth,
-                                           fromIndex,
-                                           toIndex);
+                                           startIndex,
+                                           startIndex + subrangeLength);
             inserters[i].start();
         }
         
+//        new LongBucketInserter(startIndexMap, 
+//                               processedMaps[threads - 1], 
+//                               sourceArray, 
+//                               targetArray, 
+//                               recursionDepth, 
+//                               fromIndex, 
+//                               toIndex).run();
         new LongBucketInserter(startIndexMap, 
                                processedMaps[threads - 1], 
                                sourceArray, 
                                targetArray, 
                                recursionDepth, 
-                               fromIndex, 
+                               startIndex, 
                                toIndex).run();
         
         try {
@@ -276,8 +285,10 @@ public class CoderoddeArrays {
             }
         }
         
-        // SORT nonEmptyBucketIndices
-        sort(nonEmptyBucketIndices.array, bucketSizeMap);
+        sort(nonEmptyBucketIndices.array, 
+             bucketSizeMap, 
+             0, 
+             nonEmptyBucketIndices.size());
         
         int optimalSubrangeLength = rangeLength / spawnDegree;
         int listIndex = 0;
@@ -285,11 +296,11 @@ public class CoderoddeArrays {
         int f = 0;
         int j = 0;
         
-        while (j < nonEmptyBucketIndices.array.length) {
+        while (j < nonEmptyBucketIndices.size()) {
             packed += bucketSizeMap[nonEmptyBucketIndices.array[j++]];
             
             if (packed >= optimalSubrangeLength
-                    || j == nonEmptyBucketIndices.array.length) {
+                    || j == nonEmptyBucketIndices.size()) {
                 packed = 0;
                 
                 for (int i = f; i < j; i++) {
@@ -301,9 +312,7 @@ public class CoderoddeArrays {
                 listIndex++;
                 f = j;
             };
-
         }
-        
         
         LongSorter[] sorters = new LongSorter[spawnDegree];
         List<List<LongTask>> taskMatrix = new ArrayList<>(spawnDegree);
@@ -317,13 +326,32 @@ public class CoderoddeArrays {
                                           threadCountMap[i],
                                           recursionDepth + 1,
                                           startIndexMap[idx],
-                                          startIndexMap[idx] + bucketSizeMap[idx]));
+                                          startIndexMap[idx] +
+                                                  bucketSizeMap[idx]));
             }
+            
+            taskMatrix.add(taskList);
         }
         
         for (int i = 0; i != spawnDegree - 1; ++i) {
             sorters[i] = new LongSorter(taskMatrix.get(i));
+            sorters[i].start();
         }
+        
+        new LongSorter(taskMatrix.get(spawnDegree - 1)).run();
+
+
+        for (int i = 0; i < sorters.length - 1; i++) {
+            try {
+                sorters[i].join();
+            } catch (InterruptedException ex) {
+                Logger.getLogger(CoderoddeArrays.class.getName())
+                        .log(Level.SEVERE, 
+                             "The thread " + sorters[i].getName(), 
+                             ex);
+            }
+        }
+         
     }
     
     private static final class LongTask {
@@ -1306,7 +1334,7 @@ public class CoderoddeArrays {
     }
     
     private static final class IntArray {
-        int[] array;
+        final int[] array;
         private int index;
         
         IntArray(int arrayLength) {
@@ -1316,6 +1344,10 @@ public class CoderoddeArrays {
         
         void add(int i) {
             array[index++] = i;
+        }
+        
+        int size() {
+            return index;
         }
     }
 
