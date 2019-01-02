@@ -1,10 +1,6 @@
 package net.coderodde.util;
 
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.List;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 
 /**
  *
@@ -52,6 +48,10 @@ public final class ParallelMSDRadixsort {
      */
     private static final int LEAST_SIGNIFICANT_BYTE_INDEX = 7;
     
+    /**
+     * The least length of a range to sort with quicksort. For smaller ranges
+     * use insertion sort.
+     */
     private static final int INSERTIONSORT_THRESHOLD = 16;
     
     // This class is a singleton.
@@ -679,7 +679,7 @@ public final class ParallelMSDRadixsort {
             long a = array[fromIndex + distance];
             long b = array[fromIndex + (rangeLength >>> 1)];
             long c = array[toIndex - distance];
-            long pivot = median(a, b, c);
+            long pivot = medianLong(a, b, c);
             int leftPartitionLength = 0;
             int rightPartitionLength = 0;
             int index = fromIndex;
@@ -735,10 +735,10 @@ public final class ParallelMSDRadixsort {
         }
     }
     
-    private static void quicksortBucketIndices(int[] array,
-                                               int fromIndex,
-                                               int toIndex,
-                                               int[] bucketSizeMap) {
+    public static void quicksortBucketIndices(final int[] indexArray,
+                                       int fromIndex,
+                                       int toIndex,
+                                       final int[] bucketSizeMap) {
         while (true) {
             final int rangeLength = toIndex - fromIndex;
             
@@ -747,35 +747,44 @@ public final class ParallelMSDRadixsort {
             }
             
             if (rangeLength < INSERTIONSORT_THRESHOLD) {
-                insertionsortBucketIndices(array,
+                insertionsortBucketIndices(indexArray,
                                            fromIndex,
                                            toIndex,
                                            bucketSizeMap);
                 return;
             }
             
-            int distance = rangeLength / 4;
-            long bucketSizeA = bucketSizeMap[array[fromIndex + distance]];
-            long bucketSizeB = bucketSizeMap[array[fromIndex + distance * 2]];
-            long bucketSizeC = bucketSizeMap[array[toIndex   - distance]];
-            long bucketSizePivot = median(bucketSizeA,
-                                          bucketSizeB,
-                                          bucketSizeC);
+            final int distance = rangeLength / 4;
+            final int bucketSizeA = 
+                    bucketSizeMap[indexArray[fromIndex + distance]]; 
+            
+            final int bucketSizeB = 
+                    bucketSizeMap[indexArray[fromIndex + distance * 2]];
+            
+            final int bucketSizeC = 
+                    bucketSizeMap[indexArray[toIndex - distance]];
+            
+            final int bucketSizePivot = medianInt(bucketSizeA,
+                                                  bucketSizeB,
+                                                  bucketSizeC);
             int leftPartitionLength  = 0;
             int rightPartitionLength = 0;
             int index = fromIndex;
             
             while (index < toIndex - rightPartitionLength) {
-                int currentElementValue = array[index];
-                long currentElementKey   = bucketSizeMap[currentElementValue];
+                final int currentElementValue = indexArray[index];
+                final int currentElementKey = 
+                        bucketSizeMap[currentElementValue];
                 
                 if (currentElementKey > bucketSizePivot) {
                     rightPartitionLength++;
-                    swap(array, toIndex - rightPartitionLength, index);
-                    swap(bucketSizeMap, toIndex - rightPartitionLength, index);
+                    swap(indexArray,
+                         toIndex - rightPartitionLength,
+                         index);
                 } else if (currentElementKey < bucketSizePivot) {
-                    swap(array, fromIndex + leftPartitionLength, index);
-                    swap(bucketSizeMap, fromIndex + leftPartitionLength, index);
+                    swap(indexArray,
+                         fromIndex + leftPartitionLength,
+                         index);
                     index++;
                     leftPartitionLength++;
                 } else {
@@ -784,13 +793,13 @@ public final class ParallelMSDRadixsort {
             }
             
             if (leftPartitionLength < rightPartitionLength) {
-                quicksortBucketIndices(array, 
+                quicksortBucketIndices(indexArray, 
                                        fromIndex,
                                        fromIndex + leftPartitionLength, 
                                        bucketSizeMap);
                 fromIndex = toIndex - rightPartitionLength;
             } else {
-                quicksortBucketIndices(array,
+                quicksortBucketIndices(indexArray,
                                        toIndex - rightPartitionLength, 
                                        toIndex,
                                        bucketSizeMap);
@@ -799,7 +808,27 @@ public final class ParallelMSDRadixsort {
         }
     }
     
-    private static long median(long a, long b, long c) {
+    private static int medianInt(final int a, 
+                                 final int b, 
+                                 final int c) {
+        if (a <= b) {
+            if (c <= a) {
+                return a;
+            }
+
+            return b <= c ? b : c;
+        } 
+
+        if (c <= b) {
+            return b;
+        }
+
+        return a <= c ? a : c;
+    } 
+    
+    private static long medianLong(final long a, 
+                                   final long b, 
+                                   final long c) {
         if (a <= b) {
             if (c <= a) {
                 return a;
@@ -830,7 +859,7 @@ public final class ParallelMSDRadixsort {
                                            final int fromIndex,
                                            final int toIndex,
                                            final int[] bucketSizeMap) {
-        for (int i = fromIndex + 1; i != toIndex; i++) {
+        for (int i = fromIndex + 1; i < toIndex; i++) {
             final int currentValue = indexArray[i];
             final int currentKey = bucketSizeMap[currentValue];
             int j = i - 1;
@@ -842,6 +871,29 @@ public final class ParallelMSDRadixsort {
             }
             
             indexArray[j + 1] = currentValue;
+        }
+    }
+    
+    /**
+     * Sorts the input.
+     * 
+     * @param array     the array holding the range to sort.
+     * @param fromIndex the starting, inclusive index of the range to sort.
+     * @param toIndex   the ending, exclusive index of the range to sort.
+     */
+    static void insertiont(final long[] array,
+                           final int fromIndex,
+                           final int toIndex) {
+        for (int i = fromIndex + 1; i < toIndex; i++) {
+            final long current = array[i];
+            int j = i - 1;
+            
+            while (j >= fromIndex && array[j] > current) {
+                array[j + 1] = array[j];
+                j--;
+            }
+            
+            array[j + 1] = current;
         }
     }
 }
