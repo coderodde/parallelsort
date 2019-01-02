@@ -873,27 +873,4 @@ public final class ParallelMSDRadixsort {
             indexArray[j + 1] = currentValue;
         }
     }
-    
-    /**
-     * Sorts the input.
-     * 
-     * @param array     the array holding the range to sort.
-     * @param fromIndex the starting, inclusive index of the range to sort.
-     * @param toIndex   the ending, exclusive index of the range to sort.
-     */
-    static void insertiont(final long[] array,
-                           final int fromIndex,
-                           final int toIndex) {
-        for (int i = fromIndex + 1; i < toIndex; i++) {
-            final long current = array[i];
-            int j = i - 1;
-            
-            while (j >= fromIndex && array[j] > current) {
-                array[j + 1] = array[j];
-                j--;
-            }
-            
-            array[j + 1] = current;
-        }
-    }
 }

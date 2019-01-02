@@ -110,7 +110,18 @@ public final class ParallelMSDRadixsortTest {
             long[] array2 = array1.clone();
             
             Arrays.sort(array1);
-            ParallelMSDRadixsort.insertiont(array2, 0, array2.length);
+            ParallelMSDRadixsort.insertionsort(array2, 0, array2.length);
+            
+            assertTrue(Arrays.equals(array1, array2));
+            
+            array1 = random.longs(random.nextInt(9996) + 5).toArray();
+            array2 = array1.clone();
+            
+            int toIndex = random.nextInt(array1.length - 1) + 1;
+            int fromIndex = random.nextInt(toIndex);
+            
+            Arrays.sort(array1, fromIndex, toIndex);
+            ParallelMSDRadixsort.insertionsort(array2, fromIndex, toIndex);
             
             assertTrue(Arrays.equals(array1, array2));
         }
@@ -127,6 +138,17 @@ public final class ParallelMSDRadixsortTest {
             
             Arrays.sort(array1);
             ParallelMSDRadixsort.quicksort(array2, 0, array2.length);
+            
+            assertTrue(Arrays.equals(array1, array2));
+            
+            array1 = random.longs(random.nextInt(500) + 1).toArray();
+            array2 = array1.clone();
+            
+            int toIndex = random.nextInt(array1.length - 1) + 1;
+            int fromIndex = random.nextInt(toIndex);
+            
+            Arrays.sort(array1, fromIndex, toIndex);
+            ParallelMSDRadixsort.quicksort(array2, fromIndex, toIndex);
             
             assertTrue(Arrays.equals(array1, array2));
         }
