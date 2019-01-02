@@ -30,7 +30,8 @@ public final class ParallelMSDRadixsortTest {
         System.out.println("Seed = " + seed);
         
         for (int i = 0; i < 100; i++) {
-            final int length = random.nextInt(100) + 1;
+            System.out.println(i);
+            final int length = random.nextInt(101);
             final int[] actual = IntStream.range(0, length).toArray();
             keys = random.ints(length).toArray();
             final int index1 = random.nextInt(length);
@@ -45,7 +46,7 @@ public final class ParallelMSDRadixsortTest {
             } else {
                 fromIndex = index2;
                 toIndex = index1;
-            }
+            }   
             
             insertionsortBucketIndices(actual, 
                                        fromIndex, 

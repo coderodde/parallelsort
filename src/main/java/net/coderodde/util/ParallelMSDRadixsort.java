@@ -5,7 +5,6 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import static net.coderodde.util.CoderoddeArrays.quicksort;
 
 /**
  *
@@ -662,6 +661,79 @@ public final class ParallelMSDRadixsort {
         final int bitShift = 64 - (recursionDepth + 1) * Long.BYTES;
         return (int)((key ^ SIGN_MASK) >>> bitShift) & BUCKET_MASK;
     }
+
+    public static void quicksort(long[] array, int fromIndex, int toIndex) {
+        while (true) {
+            int rangeLength = toIndex - fromIndex;
+
+            if (rangeLength < 2) {
+                return;
+            }
+
+            if (rangeLength < INSERTIONSORT_THRESHOLD) {
+                insertionsort(array, fromIndex, toIndex);
+                return;
+            }
+
+            int distance = rangeLength / 4;
+            long a = array[fromIndex + distance];
+            long b = array[fromIndex + (rangeLength >>> 1)];
+            long c = array[toIndex - distance];
+            long pivot = median(a, b, c);
+            int leftPartitionLength = 0;
+            int rightPartitionLength = 0;
+            int index = fromIndex;
+
+            while (index < toIndex - rightPartitionLength) {
+                long current = array[index];
+
+                if (current > pivot) {
+                    ++rightPartitionLength;
+                    swap(array, toIndex - rightPartitionLength, index);
+                } else if (current < pivot) {
+                    swap(array, fromIndex + leftPartitionLength, index);
+                    ++index;
+                    ++leftPartitionLength;
+                } else {
+                    ++index;
+                }
+            }
+
+            if (leftPartitionLength < rightPartitionLength) {
+                quicksort(array, fromIndex, fromIndex + leftPartitionLength);
+                fromIndex = toIndex - rightPartitionLength;
+            } else {
+                quicksort(array, toIndex - rightPartitionLength, toIndex);
+                toIndex = fromIndex + leftPartitionLength;
+            }
+        }
+    }
+
+    private static final void swap(int[] array, int index1, int index2) {
+        int tmp = array[index1];
+        array[index1] = array[index2];
+        array[index2] = tmp;
+    }
+    
+    private static final void swap(long[] array, int index1, int index2) {
+        long tmp = array[index1];
+        array[index1] = array[index2];
+        array[index2] = tmp;
+    }
+        
+    public static void insertionsort(long[] array, int fromIndex, int toIndex) {
+        for (int i = fromIndex + 1; i < toIndex; ++i) {
+            long current = array[i];
+            int j = i  - 1;
+
+            while (j >= fromIndex && array[j] > current) {
+                array[j + 1] = array[j];
+                --j;
+            }
+
+            array[j + 1] = current;
+        }
+    }
     
     private static void quicksortBucketIndices(int[] array,
                                                int fromIndex,
@@ -725,18 +797,6 @@ public final class ParallelMSDRadixsort {
                 toIndex = fromIndex + leftPartitionLength;
             }
         }
-    }
-    
-    private static final void swap(int[] array, int index1, int index2) {
-        int tmp = array[index1];
-        array[index1] = array[index2];
-        array[index2] = tmp;
-    }
-    
-    private static final void swap(long[] array, int index1, int index2) {
-        long tmp = array[index1];
-        array[index1] = array[index2];
-        array[index2] = tmp;
     }
     
     private static long median(long a, long b, long c) {
