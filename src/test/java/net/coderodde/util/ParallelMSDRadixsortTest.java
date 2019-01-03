@@ -8,6 +8,7 @@ import static org.junit.Assert.*;
 ;
 import static net.coderodde.util.ParallelMSDRadixsort.insertionsortBucketIndices;
 import static net.coderodde.util.ParallelMSDRadixsort.quicksortBucketIndices;
+import static net.coderodde.util.ParallelMSDRadixsort.sortImpl;
 
 public final class ParallelMSDRadixsortTest {
     
@@ -144,7 +145,7 @@ public final class ParallelMSDRadixsortTest {
             array1 = random.longs(random.nextInt(500) + 1).toArray();
             array2 = array1.clone();
             
-            int toIndex = random.nextInt(array1.length - 1) + 1;
+            int toIndex = random.nextInt(array1.length) + 1;
             int fromIndex = random.nextInt(toIndex);
             
             Arrays.sort(array1, fromIndex, toIndex);
@@ -152,6 +153,33 @@ public final class ParallelMSDRadixsortTest {
             
             assertTrue(Arrays.equals(array1, array2));
         }
+    }
+    
+    @Test
+    public void testSortImpl() {
+        long seed = 154642430474L; //System.currentTimeMillis();
+        Random random = new Random(seed);
+        System.out.println("parallelsort seed = " + seed);
+        long[] originalArray = random.longs(10).toArray();
+        long[] expectedArray = originalArray.clone();
+        long[] auxBuffer     = Arrays.copyOfRange(originalArray,
+                                                  2, 
+                                                  8);
+        Arrays.sort(expectedArray, 
+                    2, 
+                    8);
+        
+        System.out.println("hello");
+        ParallelMSDRadixsort.parallelSort(originalArray, 2, 8);
+        
+//        sortImpl(auxBuffer,
+//                 originalArray,
+//                 2,
+//                 0,
+//                 2,
+//                 18);
+        
+        assertTrue(Arrays.equals(expectedArray, originalArray));
     }
     
     private static Integer[] toIntegerArray(int[] array) {

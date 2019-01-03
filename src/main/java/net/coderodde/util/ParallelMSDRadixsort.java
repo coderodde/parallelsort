@@ -81,14 +81,17 @@ public final class ParallelMSDRadixsort {
         threads = Math.max(1, threads);
         
         parallelSortImpl(array, 
-                         buffer, 
-                         0,
+                         buffer,
                          fromIndex,
                          threads, 
                          0, 
                          fromIndex, 
                          toIndex);
     }    
+    
+    public static void parallelSort(final long[] array) {
+        parallelSort(array, 0, array.length);
+    }
     
     
     /**
@@ -110,289 +113,343 @@ public final class ParallelMSDRadixsort {
     private static void parallelSortImpl(final long[] sourceArray,
                                          final long[] targetArray,
                                          final int sourceArrayOffset,
-                                         final int targetArrayOffset,
                                          final int threads,
                                          final int recursionDepth, 
                                          final int fromIndex,
                                          final int toIndex) {
+        sortImpl(sourceArray,
+                 targetArray,
+                 sourceArrayOffset,
+                 0,
+                 fromIndex,
+                 toIndex);
+//        final int rangeLength = toIndex - fromIndex;
+//        
+//        if (rangeLength < QUICKSORT_THRESHOLD) {
+//            // The most significant byte of a long value has recursion depth of
+//            // 0, and the least significant byte of a long value has recursion
+//            // depth of 7. When the recursionDepth is even (0, 2, 4, 6), the 
+//            // data to sort is the original array being passed to the entire 
+//            // sort.
+//            if (recursionDepth % 2 == 0) {
+//                // Once here, just sort in-plaace the range.
+//                quicksort(sourceArray, 
+//                          fromIndex, 
+//                          toIndex);
+//            } else {
+//                // The subrange to sort is in the auxiliary buffer.
+//                quicksort(targetArray,
+//                          targetArrayOffset + fromIndex, 
+//                          targetArrayOffset + toIndex);
+//                
+//                // Now just copy the sorted subrange to the source array.
+//                System.arraycopy(targetArray,
+//                                 targetArrayOffset + fromIndex, 
+//                                 sourceArray, 
+//                                 fromIndex,
+//                                 rangeLength);
+//            }
+//            
+//            return;
+//        }
+//        
+//        if (threads < 2) {
+//            // No multithreading is suitable, sort serially.
+//            sortImpl(sourceArray, 
+//                     targetArray,
+//                     sourceArrayOffset,
+//                     targetArrayOffset,
+//                     recursionDepth,
+//                     fromIndex,
+//                     toIndex);
+//            return;
+//        }
+//        
+//        final LongBucketCountingThread[] counters = 
+//                new LongBucketCountingThread[threads];
+//        
+//        
+//        final int subrangeLength = rangeLength / threads;
+//        int startIndex = fromIndex + sourceArrayOffset;
+//        
+//        for (int i = 0; i != threads - 1; i++, startIndex += subrangeLength) {
+//            counters[i] = 
+//                    new LongBucketCountingThread(sourceArray,
+//                                                 recursionDepth,
+//                                                 startIndex,
+//                                                 startIndex + subrangeLength);
+//        }
+//        
+//        new LongBucketCountingThread(sourceArray,
+//                                     recursionDepth,
+//                                     startIndex,
+//                                     sourceArrayOffset + toIndex).run();
+//        
+//        try {
+//            for (int i = 0; i != threads - 1; i++) {
+//                counters[i].join();
+//            }
+//        } catch (InterruptedException ex) {
+//            throw new IllegalStateException(
+//                    "Something happened with multithreading. Message: " +
+//                            ex.getMessage());
+//        }
+//        
+//        final int[] bucketSizeMap = new int[BUCKETS];
+//        final int[] startIndexMap = new int[BUCKETS];
+//        
+//        // Count the size of each bucket.
+//        for (int i = 0; i != threads; i++) {
+//            LongBucketCountingThread counter = counters[i];
+//            
+//            for (int j = 0; j != BUCKETS; j++) {
+//                bucketSizeMap[j] += counter.localBucketSizeMap[j];
+//            }
+//        }
+//        
+//        // Prepare the starting indices of each bucket.
+//        startIndexMap[0] = fromIndex + sourceArrayOffset;
+//        
+//        // Compute where each bucket should start.
+//        for (int i = 1; i != BUCKETS; i++) {
+//            startIndexMap[i] = startIndexMap[i - 1] + 
+//                               bucketSizeMap[i - 1];
+//        }
+//        
+//        LongBucketInserterThread[] inserters = 
+//                new LongBucketInserterThread[threads - 1];
+//        
+//        int[][] processedMaps = new int[threads][BUCKETS];
+//        
+//        for (int i = 1; i != threads; i++) {
+//            int[] partialBucketSizeMap = counters[i - 1].localBucketSizeMap;
+//            
+//            for (int j = 0; j != BUCKETS; j++) {
+//                processedMaps[i][j] = 
+//                        processedMaps[i - 1][j] + partialBucketSizeMap[j];
+//            }
+//        }
+//        
+//        startIndex = fromIndex + sourceArrayOffset;
+//        
+//        for (int i = 0; i != threads - 1; i++, startIndex += subrangeLength) {
+//            inserters[i] =
+//                    new LongBucketInserterThread(sourceArray,
+//                                                 targetArray, 
+//                                                 sourceArrayOffset, 
+//                                                 targetArrayOffset,
+//                                                 startIndexMap,
+//                                                 bucketSizeMap, 
+//                                                 recursionDepth, 
+//                                                 fromIndex,     
+//                                                 toIndex);
+//            inserters[i].start();
+//        }
+//        
+//        new LongBucketInserterThread(sourceArray,
+//                                     targetArray,
+//                                     sourceArrayOffset,
+//                                     targetArrayOffset,
+//                                     startIndexMap,
+//                                     bucketSizeMap,
+//                                     recursionDepth,
+//                                     fromIndex,
+//                                     toIndex).run();
+//        
+//        try {
+//            for (int i = 0; i != inserters.length - 1; i++) {
+//                inserters[i].join();
+//            } 
+//        } catch (InterruptedException ex) {
+//            throw new IllegalStateException(
+//                    "Something happened with multithreading. Message: " +
+//                            ex.getMessage());
+//        }
+//        
+//        if (recursionDepth == LEAST_SIGNIFICANT_BYTE_INDEX) {
+//            // No where to recur.
+//            return;
+//        }
+//        
+//        int numberOfNonEmptyBuckets = 0;
+//        
+//        for (int i : bucketSizeMap) {
+//            if (i != 0) {
+//                numberOfNonEmptyBuckets++;
+//            }
+//        }
+//        
+//        final int spawnDegree = Math.min(numberOfNonEmptyBuckets, threads);
+//        IntArray[] bucketIndexListArray = new IntArray[spawnDegree];
+//        
+//        for (int i = 0; i != spawnDegree; i++) { // TODO: lower bound here?
+//            bucketIndexListArray[i] = new IntArray(numberOfNonEmptyBuckets);
+//        }
+//        
+//        int[] threadCountMap = new int[spawnDegree];
+//        
+//        for (int i = 0; i != spawnDegree; i++) {
+//            threadCountMap[i] = threads / spawnDegree;
+//        }
+//        
+//        for (int i = 0; i != threads % spawnDegree; i++) {
+//            threadCountMap[i]++;
+//        }
+//        
+//        // 'nonEmptyBucketIndices' will store in accending order the indices of
+//        // all non-empty buckets.
+//        IntArray nonEmptyBucketIndices = new IntArray(numberOfNonEmptyBuckets);
+//        
+//        for (int i = 0; i != BUCKETS; i++) {
+//            if (bucketSizeMap[i] != 0) {
+//                nonEmptyBucketIndices.add(i);
+//            }
+//        }
+//        
+//        quicksortBucketIndices(nonEmptyBucketIndices.array, 
+//                               0, 
+//                               nonEmptyBucketIndices.size, 
+//                               bucketSizeMap);
+//        
+//        final int optimalSubrangeLength = rangeLength / spawnDegree;
+//        int listIndex = 0;
+//        int packed = 0;
+//        int f = 0;
+//        int j = 0;
+//        
+//        while (j < nonEmptyBucketIndices.size()) {
+//            packed += bucketSizeMap[nonEmptyBucketIndices.array[j++]];
+//            
+//            if (packed >= optimalSubrangeLength
+//                    || j == nonEmptyBucketIndices.size()) {
+//                packed = 0;
+//                
+//                for (int i = f; i < j; i++) {
+//                    bucketIndexListArray[listIndex]
+//                            .add(nonEmptyBucketIndices.array[i]);
+//                }
+//                
+//                listIndex++;
+//                f = j;
+//            };
+//        }
+//        
+//        LongTask[][] taskMatrix = new LongTask[spawnDegree][];
+//        
+//        for (int threadIndex = 0; threadIndex != spawnDegree; threadIndex++) {
+//            taskMatrix[threadIndex] =
+//                    new LongTask[bucketIndexListArray[threadIndex].size];
+//            
+//            for (int i = 0; i != bucketIndexListArray[threadIndex].size; i++) {
+//                taskMatrix[threadIndex][i] = 
+//                        new LongTask(targetArray,
+//                                     sourceArray,
+//                                     targetArrayOffset,
+//                                     sourceArrayOffset,
+//                                     threadCountMap[threadIndex],
+//                                     recursionDepth + 1,
+//                                     startIndexMap[i],
+//                                     startIndexMap[i] + bucketSizeMap[i]);
+//            }
+//        }
+//        
+//        LongSorterThread[] sorters = new LongSorterThread[spawnDegree];
+//
+//        for (int i = 0; i != spawnDegree - 1; i++) {
+//            sorters[i] = new LongSorterThread(taskMatrix[i]);
+//            sorters[i].start();
+//        }
+//        
+//        new LongSorterThread(taskMatrix[spawnDegree - 1]).run();
+//        
+//        try {
+//            for (int i = 0; i != spawnDegree - 1; i++) {
+//                sorters[i].join();
+//            }
+//        } catch (final InterruptedException ex) {
+//            throw new IllegalStateException(
+//                    "Something happened with multithreading. Message: " +
+//                            ex.getMessage());
+//        } 
+    }
+    
+    static final void sortImpl(final long[] sourceArray,
+                               final long[] targetArray,
+                               final int sourceArrayOffset,
+                               final int recursionDepth,
+                               final int fromIndex,
+                               final int toIndex) {
         final int rangeLength = toIndex - fromIndex;
         
-        if (rangeLength < QUICKSORT_THRESHOLD) {
-            // The most significant byte of a long value has recursion depth of
-            // 0, and the least significant byte of a long value has recursion
-            // depth of 7. When the recursionDepth is even (0, 2, 4, 6), the 
-            // data to sort is the original array being passed to the entire 
-            // sort.
+        if (rangeLength <= /* QUICKSORT_THRESHOLD */ 1) {
             if (recursionDepth % 2 == 0) {
-                // Once here, just sort in-plaace the range.
-                quicksort(sourceArray, 
-                          fromIndex, 
+                // 'sourceArray' is the actual input array.
+                quicksort(sourceArray,
+                          fromIndex,
                           toIndex);
             } else {
-                // The subrange to sort is in the auxiliary buffer.
-                quicksort(targetArray,
-                          targetArrayOffset + fromIndex, 
-                          targetArrayOffset + toIndex);
+                // 'sourceArray' is actually the auxiliary buffer.
+                quicksort(sourceArray,
+                          fromIndex - sourceArrayOffset,
+                          toIndex   - sourceArrayOffset);
                 
-                // Now just copy the sorted subrange to the source array.
-                System.arraycopy(targetArray,
-                                 targetArrayOffset + fromIndex, 
-                                 sourceArray, 
+                System.arraycopy(sourceArray, 
                                  fromIndex,
+                                 targetArray,
+                                 fromIndex + sourceArrayOffset,
                                  rangeLength);
             }
             
             return;
-        }
-        
-        if (threads < 2) {
-            // No multithreading is suitable, sort serially.
-            sortImpl(sourceArray, 
-                     targetArray,
-                     sourceArrayOffset,
-                     targetArrayOffset,
-                     recursionDepth,
-                     fromIndex,
-                     toIndex);
-            return;
-        }
-        
-        final LongBucketCountingThread[] counters = 
-                new LongBucketCountingThread[threads];
-        
-        
-        final int subrangeLength = rangeLength / threads;
-        int startIndex = fromIndex + sourceArrayOffset;
-        
-        for (int i = 0; i != threads - 1; i++, startIndex += subrangeLength) {
-            counters[i] = 
-                    new LongBucketCountingThread(sourceArray,
-                                                 recursionDepth,
-                                                 startIndex,
-                                                 startIndex + subrangeLength);
-        }
-        
-        new LongBucketCountingThread(sourceArray,
-                                     recursionDepth,
-                                     startIndex,
-                                     sourceArrayOffset + toIndex).run();
-        
-        try {
-            for (int i = 0; i != threads - 1; i++) {
-                counters[i].join();
-            }
-        } catch (InterruptedException ex) {
-            throw new IllegalStateException(
-                    "Something happened with multithreading. Message: " +
-                            ex.getMessage());
         }
         
         final int[] bucketSizeMap = new int[BUCKETS];
         final int[] startIndexMap = new int[BUCKETS];
+        final int[] processedMap  = new int[BUCKETS];
         
-        // Count the size of each bucket.
-        for (int i = 0; i != threads; i++) {
-            LongBucketCountingThread counter = counters[i];
-            
-            for (int j = 0; j != BUCKETS; j++) {
-                bucketSizeMap[j] += counter.localBucketSizeMap[j];
-            }
+        int startIndex;
+        int endIndex;
+        
+        if (recursionDepth % 2 == 0) {
+            startIndex = fromIndex;
+            endIndex   = toIndex;
+        } else {
+            startIndex = fromIndex - sourceArrayOffset;
+            endIndex   = toIndex - sourceArrayOffset;
         }
         
-        // Prepare the starting indices of each bucket.
-        startIndexMap[0] = fromIndex + sourceArrayOffset;
+        for (int i = startIndex; i != endIndex; i++) {
+            int index = getBucketIndex(sourceArray[i], recursionDepth);
+            bucketSizeMap[index]++;
+        }
         
-        // Compute where each bucket should start.
+        startIndexMap[0] = 
+                fromIndex -
+                (recursionDepth % 2 == 0 ? sourceArrayOffset : 0);
+        
         for (int i = 1; i != BUCKETS; i++) {
-            startIndexMap[i] = startIndexMap[i - 1] + 
-                               bucketSizeMap[i - 1];
+            startIndexMap[i] = startIndexMap[i - 1] + bucketSizeMap[i - 1];
         }
         
-        LongBucketInserterThread[] inserters = 
-                new LongBucketInserterThread[threads - 1];
-        
-        int[][] processedMaps = new int[threads][BUCKETS];
-        
-        for (int i = 1; i != threads; i++) {
-            int[] partialBucketSizeMap = counters[i - 1].localBucketSizeMap;
-            
-            for (int j = 0; j != BUCKETS; j++) {
-                processedMaps[i][j] = 
-                        processedMaps[i - 1][j] + partialBucketSizeMap[j];
-            }
-        }
-        
-        startIndex = fromIndex + sourceArrayOffset;
-        
-        for (int i = 0; i != threads - 1; i++, startIndex += subrangeLength) {
-            inserters[i] =
-                    new LongBucketInserterThread(sourceArray,
-                                                 targetArray, 
-                                                 sourceArrayOffset, 
-                                                 targetArrayOffset,
-                                                 startIndexMap,
-                                                 bucketSizeMap, 
-                                                 recursionDepth, 
-                                                 fromIndex,     
-                                                 toIndex);
-            inserters[i].start();
-        }
-        
-        new LongBucketInserterThread(sourceArray,
-                                     targetArray,
-                                     sourceArrayOffset,
-                                     targetArrayOffset,
-                                     startIndexMap,
-                                     bucketSizeMap,
-                                     recursionDepth,
-                                     fromIndex,
-                                     toIndex).run();
-        
-        try {
-            for (int i = 0; i != inserters.length - 1; i++) {
-                inserters[i].join();
-            } 
-        } catch (InterruptedException ex) {
-            throw new IllegalStateException(
-                    "Something happened with multithreading. Message: " +
-                            ex.getMessage());
+        for (int i = startIndex; i != endIndex; i++) {
+            final int index = getBucketIndex(sourceArray[i], recursionDepth);
+            targetArray[startIndexMap[index] + processedMap[index]++] = 
+                    sourceArray[i];
         }
         
         if (recursionDepth == LEAST_SIGNIFICANT_BYTE_INDEX) {
-            // No where to recur.
             return;
         }
-        
-        int numberOfNonEmptyBuckets = 0;
-        
-        for (int i : bucketSizeMap) {
-            if (i != 0) {
-                numberOfNonEmptyBuckets++;
-            }
-        }
-        
-        final int spawnDegree = Math.min(numberOfNonEmptyBuckets, threads);
-        IntArray[] bucketIndexListArray = new IntArray[spawnDegree];
-        
-        for (int i = 0; i != spawnDegree; i++) { // TODO: lower bound here?
-            bucketIndexListArray[i] = new IntArray(numberOfNonEmptyBuckets);
-        }
-        
-        int[] threadCountMap = new int[spawnDegree];
-        
-        for (int i = 0; i != spawnDegree; i++) {
-            threadCountMap[i] = threads / spawnDegree;
-        }
-        
-        for (int i = 0; i != threads % spawnDegree; i++) {
-            threadCountMap[i]++;
-        }
-        
-        // 'nonEmptyBucketIndices' will store in accending order the indices of
-        // all non-empty buckets.
-        IntArray nonEmptyBucketIndices = new IntArray(numberOfNonEmptyBuckets);
         
         for (int i = 0; i != BUCKETS; i++) {
             if (bucketSizeMap[i] != 0) {
-                nonEmptyBucketIndices.add(i);
+                sortImpl(targetArray,
+                         sourceArray,
+                         sourceArrayOffset,
+                         recursionDepth + 1,
+                         startIndexMap[i],
+                         startIndexMap[i] + bucketSizeMap[i]);
             }
-        }
-        
-        quicksortBucketIndices(nonEmptyBucketIndices.array, 
-                               0, 
-                               nonEmptyBucketIndices.size, 
-                               bucketSizeMap);
-        
-        final int optimalSubrangeLength = rangeLength / spawnDegree;
-        int listIndex = 0;
-        int packed = 0;
-        int f = 0;
-        int j = 0;
-        
-        while (j < nonEmptyBucketIndices.size()) {
-            packed += bucketSizeMap[nonEmptyBucketIndices.array[j++]];
-            
-            if (packed >= optimalSubrangeLength
-                    || j == nonEmptyBucketIndices.size()) {
-                packed = 0;
-                
-                for (int i = f; i < j; i++) {
-                    bucketIndexListArray[listIndex]
-                            .add(nonEmptyBucketIndices.array[i]);
-                }
-                
-                listIndex++;
-                f = j;
-            };
-        }
-        
-        LongTask[][] taskMatrix = new LongTask[spawnDegree][];
-        
-        for (int threadIndex = 0; threadIndex != spawnDegree; threadIndex++) {
-            taskMatrix[threadIndex] =
-                    new LongTask[bucketIndexListArray[threadIndex].size];
-            
-            for (int i = 0; i != bucketIndexListArray[threadIndex].size; i++) {
-                taskMatrix[threadIndex][i] = 
-                        new LongTask(targetArray,
-                                     sourceArray,
-                                     targetArrayOffset,
-                                     sourceArrayOffset,
-                                     threadCountMap[threadIndex],
-                                     recursionDepth + 1,
-                                     startIndexMap[i],
-                                     startIndexMap[i] + bucketSizeMap[i]);
-            }
-        }
-        
-        LongSorterThread[] sorters = new LongSorterThread[spawnDegree];
-
-        for (int i = 0; i != spawnDegree - 1; i++) {
-            sorters[i] = new LongSorterThread(taskMatrix[i]);
-            sorters[i].start();
-        }
-        
-        new LongSorterThread(taskMatrix[spawnDegree - 1]).run();
-        
-        try {
-            for (int i = 0; i != spawnDegree - 1; i++) {
-                sorters[i].join();
-            }
-        } catch (final InterruptedException ex) {
-            throw new IllegalStateException(
-                    "Something happened with multithreading. Message: " +
-                            ex.getMessage());
-        } 
-    }
-    
-    private static final void sortImpl(final long[] sourceArray,
-                                       final long[] targetArray,
-                                       final int sourceArrayOffset,
-                                       final int targetArrayOffset,
-                                       final int recursionDepth,
-                                       final int fromIndex,
-                                       final int toIndex) {
-        final int rangeLength = toIndex - fromIndex;
-        
-        if (rangeLength <= QUICKSORT_THRESHOLD) {
-            if (recursionDepth % 2 == 0) {
-                quicksort(sourceArray, 
-                          sourceArrayOffset + fromIndex, 
-                          sourceArrayOffset + toIndex);
-                
-            } else {
-                quicksort(targetArray,
-                          targetArrayOffset + fromIndex,
-                          targetArrayOffset + toIndex);
-                
-                System.arraycopy(targetArray, 
-                                 targetArrayOffset + fromIndex,
-                                 sourceArray, 
-                                 sourceArrayOffset + fromIndex, 
-                                 rangeLength);
-            }
-            
-            return;
         }
     }
     
@@ -579,7 +636,6 @@ public final class ParallelMSDRadixsort {
                     parallelSortImpl(longTask.sourceArray,
                                      longTask.targetArray,
                                      longTask.sourceArrayOffset,
-                                     longTask.targetArrayOffset,
                                      longTask.threads,
                                      longTask.recursionDepth,
                                      longTask.fromIndex,
@@ -588,7 +644,6 @@ public final class ParallelMSDRadixsort {
                     sortImpl(longTask.sourceArray,
                              longTask.targetArray,
                              longTask.sourceArrayOffset,
-                             longTask.targetArrayOffset,
                              longTask.recursionDepth,
                              longTask.fromIndex,
                              longTask.toIndex);
@@ -602,7 +657,6 @@ public final class ParallelMSDRadixsort {
         final long[] sourceArray;
         final long[] targetArray;
         final int sourceArrayOffset;
-        final int targetArrayOffset;
         final int threads;
         final int recursionDepth;
         final int fromIndex;
@@ -611,7 +665,6 @@ public final class ParallelMSDRadixsort {
         LongTask(final long[] sourceArray,
                  final long[] targetArray,
                  final int sourceArrayOffset,
-                 final int targetArrayOffset,
                  final int threads,
                  final int recursionDepth,
                  final int fromIndex,
@@ -619,7 +672,6 @@ public final class ParallelMSDRadixsort {
             this.sourceArray       = sourceArray;
             this.targetArray       = targetArray;
             this.sourceArrayOffset = sourceArrayOffset;
-            this.targetArrayOffset = targetArrayOffset;
             this.threads           = threads;
             this.recursionDepth    = recursionDepth;
             this.fromIndex         = fromIndex;
@@ -662,7 +714,9 @@ public final class ParallelMSDRadixsort {
         return (int)((key ^ SIGN_MASK) >>> bitShift) & BUCKET_MASK;
     }
 
-    public static void quicksort(long[] array, int fromIndex, int toIndex) {
+    public static void quicksort(long[] array, 
+                                 int fromIndex, 
+                                 int toIndex) {
         while (true) {
             int rangeLength = toIndex - fromIndex;
 
