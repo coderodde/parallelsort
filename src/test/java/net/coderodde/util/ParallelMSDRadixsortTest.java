@@ -6,6 +6,8 @@ import java.util.stream.IntStream;
 import org.junit.Test;
 import static org.junit.Assert.*;
 ;
+import static net.coderodde.util.ParallelMSDRadixsort.getSignedBucketIndex;
+import static net.coderodde.util.ParallelMSDRadixsort.getUnsignedBucketIndex;
 import static net.coderodde.util.ParallelMSDRadixsort.insertionsortBucketIndices;
 import static net.coderodde.util.ParallelMSDRadixsort.quicksortBucketIndices;
 import static net.coderodde.util.ParallelMSDRadixsort.sortImpl;
@@ -13,6 +15,42 @@ import static net.coderodde.util.ParallelMSDRadixsort.sortImpl;
 public final class ParallelMSDRadixsortTest {
     
     @Test
+    public void testGetSignedBucketIndex() {
+        assertEquals(0b0111_1111, getSignedBucketIndex(0xff00_0000_0000_0000L));
+        assertEquals(0xff, getSignedBucketIndex(0x7f00_0000_0000_0000L));
+        assertEquals(0xa3, getSignedBucketIndex(0x2300_0000_0000_0000L));
+        System.out.println("getSignedBucketIndex passed.");
+    }
+    
+    @Test
+    public void testGetUnsignedBucketIndex() {
+        assertEquals(0xb9, getUnsignedBucketIndex(0xb900L, 1));
+        assertEquals(0xeb, getUnsignedBucketIndex(0xeb_0000L, 2));
+        assertEquals(0x32, getUnsignedBucketIndex(0x32_0000_0000L, 4));
+        assertEquals(0x26, getUnsignedBucketIndex(0x2600_0000_0000_0000L, 7));
+        System.out.println("getUnsignedBucketIndex passed,");
+    }
+    
+//    @Test
+    public void testSmallRadixsort() {
+        long[] array1 = new long[]{ 10 << 56, 
+                                    4  << 56, 
+                                    3  << 56, 
+                                    4  << 56, 
+                                    -1 << 56, 
+                                    2  << 56, 
+                                    5  << 56, 
+                                    8  << 56, 
+                                    9  << 56 };
+        long[] array2 = array1.clone();
+        
+        Arrays.sort(array1, 1, array1.length - 1);
+        ParallelMSDRadixsort.parallelSort(array2, 1, array2.length - 1);
+        
+        assertTrue(Arrays.equals(array1, array2));
+    }
+    
+//    @Test
     public void testInsertionSortBucketIndices() {
         int[] array = { 0, 1, 3, 5, 6, 7, 9 };
         int[] keys  = { 3, 5, 1, 3, 8, 6, 2, 1, 4, 5 };
@@ -62,7 +100,7 @@ public final class ParallelMSDRadixsortTest {
         }
     }
     
-    @Test
+//    @Test
     public void testQuicksortBucketIndices() {
         final long seed = System.currentTimeMillis();
         final Random random = new Random(seed);
@@ -101,7 +139,7 @@ public final class ParallelMSDRadixsortTest {
         }
     }
     
-    @Test
+//    @Test
     public void testInsertionsortLong() {
         long seed = System.currentTimeMillis();
         Random random = new Random(seed);
@@ -128,7 +166,7 @@ public final class ParallelMSDRadixsortTest {
         }
     }
     
-    @Test
+//    @Test
     public void testQuicksortLong() {
         long seed = System.currentTimeMillis();
         Random random = new Random(seed);
@@ -155,12 +193,17 @@ public final class ParallelMSDRadixsortTest {
         }
     }
     
-    @Test
+//    @Test
     public void testSortImpl() {
         long seed = 154642430474L; //System.currentTimeMillis();
         Random random = new Random(seed);
         System.out.println("parallelsort seed = " + seed);
         long[] originalArray = random.longs(10).toArray();
+        
+        for (int i = 0; i < originalArray.length; i++) {
+            originalArray[i] <<= 7 * 8;
+        }
+        
         long[] expectedArray = originalArray.clone();
         long[] auxBuffer     = Arrays.copyOfRange(originalArray,
                                                   2, 

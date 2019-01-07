@@ -429,7 +429,7 @@ public final class ParallelMSDRadixsort {
         for (int i = sourceArrayFromIndex; 
                 i != sourceArrayToIndex;
                 i++) {
-            final int bucketIndex = getBucketIndex(sourceArray[i], 
+            final int bucketIndex = getUnsignedBucketIndex(sourceArray[i], 
                                                    recursionDepth);
             
             bucketSizeMap[bucketIndex]++;
@@ -452,7 +452,7 @@ public final class ParallelMSDRadixsort {
             for (int i = sourceArrayFromIndex; 
                      i != sourceArrayToIndex;
                      i++) {
-                final int bucketIndex = getBucketIndex(sourceArray[i],
+                final int bucketIndex = getUnsignedBucketIndex(sourceArray[i],
                                                        recursionDepth);
                 final int elementIndex = startIndexMap[bucketIndex] +
                                           processedMap[bucketIndex] -
@@ -464,7 +464,7 @@ public final class ParallelMSDRadixsort {
             for (int i = sourceArrayFromIndex; 
                      i != sourceArrayToIndex;
                      i++) {
-                final int bucketIndex = getBucketIndex(sourceArray[i],
+                final int bucketIndex = getUnsignedBucketIndex(sourceArray[i],
                                                        recursionDepth);
                 final int elementIndex = startIndexMap[bucketIndex] +
                                           processedMap[bucketIndex] +
@@ -505,6 +505,7 @@ public final class ParallelMSDRadixsort {
                 }
             }
         }
+    }
 //        
 //        int startIndex;
 //        int endIndex;
@@ -616,7 +617,7 @@ public final class ParallelMSDRadixsort {
         @Override
         public void run() {
             for (int i = fromIndex; i != toIndex; i++) {
-                localBucketSizeMap[getBucketIndex(array[i], recursionDepth)]++;
+                localBucketSizeMap[getUnsignedBucketIndex(array[i], recursionDepth)]++;
             }
         }
     }
@@ -711,7 +712,7 @@ public final class ParallelMSDRadixsort {
         public void run() {
             for (int i = fromIndex + sourceArrayOffset; 
                     i != toIndex + sourceArrayOffset; i++) {
-                int bucketIndex = getBucketIndex(sourceArray[i], 
+                int bucketIndex = getUnsignedBucketIndex(sourceArray[i], 
                                                  recursionDepth);
                 targetArray[startIndexMap[bucketIndex] + 
                             processedMap [bucketIndex] + targetArrayOffset] =
@@ -807,10 +808,18 @@ public final class ParallelMSDRadixsort {
         }
     }
     
-    private static final int getBucketIndex(final long key, 
-                                            final int recursionDepth) {
-        final int bitShift = 64 - (recursionDepth + 1) * Long.BYTES;
-        return (int)((key ^ SIGN_MASK) >>> bitShift) & BUCKET_MASK;
+    static final int getSignedBucketIndex(final long key) {
+        final int bitShift = Long.SIZE - Byte.SIZE;
+        return (int)((key >>> bitShift) ^ 0b1000_0000);
+        // ... & 0b1000_0000 flips the sign bit so that all the negative value
+        // buckets end up before the positive ones.
+//        return (int)((key >>> bitShift) & 0b1000_0000L);
+    }
+    
+    static final int getUnsignedBucketIndex(final long key,
+                                            final int byteIndex) {
+        final int bitShift = Long.SIZE - (Long.BYTES - byteIndex) * Byte.SIZE;
+        return (int)(key >>> bitShift);
     }
 
     public static void quicksort(long[] array, 
