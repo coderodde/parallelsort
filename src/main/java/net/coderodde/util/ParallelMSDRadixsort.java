@@ -373,30 +373,48 @@ public final class ParallelMSDRadixsort {
 //        } 
     }
     
+    /**
+     * Performs serial sorting over a requested range. The values of 
+     * {@code fromIndex} and {@code toIndex} must be set accordingly by the
+     * caller method.
+     * 
+     * @param sourceArray           the array that contains all the correct values
+     *                              but in an arbitrary order.
+     * @param targetArray           the array holding the targeted range to sort.
+     * @param auxiliaryBufferOffset the offset of the auxiliary buffer.
+     * @param recursionDepth        the depth of recursion. The value of zero stands
+     *                              for the most-significant byte.
+     * @param sourceArrayFromIndex  the starting, inclusive index into the actual 
+     *                              range in the source array.
+     * @param sourceArrayToIndex    the ending, exclusive index into the actual
+     *                              range in the source array.
+     */
     static final void sortImpl(final long[] sourceArray,
                                final long[] targetArray,
-                               final int sourceArrayOffset,
+                               final int auxiliaryBufferOffset,
                                final int recursionDepth,
-                               final int fromIndex,
-                               final int toIndex) {
-        final int rangeLength = toIndex - fromIndex;
+                               final int sourceArrayFromIndex,
+                               final int sourceArrayToIndex) {
+        final int rangeLength = sourceArrayToIndex - sourceArrayFromIndex;
         
         if (rangeLength <= /* QUICKSORT_THRESHOLD */ 1) {
             if (recursionDepth % 2 == 0) {
                 // 'sourceArray' is the actual input array.
                 quicksort(sourceArray,
-                          fromIndex,
-                          toIndex);
+                          sourceArrayFromIndex,
+                          sourceArrayToIndex);
             } else {
-                // 'sourceArray' is actually the auxiliary buffer.
-                quicksort(sourceArray,
-                          fromIndex - sourceArrayOffset,
-                          toIndex   - sourceArrayOffset);
+                // 'sourceArray' is actually the auxiliary buffer, so sort the
+                // 'targetArray'. 
+                quicksort(targetArray,
+                          sourceArrayFromIndex, // - sourceArrayOffset,
+                          sourceArrayToIndex  //  - sourceArrayOffset
+                );
                 
                 System.arraycopy(sourceArray, 
-                                 fromIndex,
+                                 sourceArrayFromIndex,
                                  targetArray,
-                                 fromIndex + sourceArrayOffset,
+                                 sourceArrayFromIndex + auxiliaryBufferOffset,
                                  rangeLength);
             }
             
@@ -407,50 +425,131 @@ public final class ParallelMSDRadixsort {
         final int[] startIndexMap = new int[BUCKETS];
         final int[] processedMap  = new int[BUCKETS];
         
-        int startIndex;
-        int endIndex;
-        
-        if (recursionDepth % 2 == 0) {
-            startIndex = fromIndex;
-            endIndex   = toIndex;
-        } else {
-            startIndex = fromIndex - sourceArrayOffset;
-            endIndex   = toIndex - sourceArrayOffset;
+        // Find out the size of each bucket in the current source array range.
+        for (int i = sourceArrayFromIndex; 
+                i != sourceArrayToIndex;
+                i++) {
+            final int bucketIndex = getBucketIndex(sourceArray[i], 
+                                                   recursionDepth);
+            
+            bucketSizeMap[bucketIndex]++;
         }
         
-        for (int i = startIndex; i != endIndex; i++) {
-            int index = getBucketIndex(sourceArray[i], recursionDepth);
-            bucketSizeMap[index]++;
-        }
-        
-        startIndexMap[0] = 
-                fromIndex -
-                (recursionDepth % 2 == 0 ? sourceArrayOffset : 0);
+        // Compute the indices of the first element in each bucket.
+        startIndexMap[0] = sourceArrayFromIndex /*- (recursionDepth == 0 ?
+                                                   0 :
+                                                   auxiliaryBufferOffset)*/;
         
         for (int i = 1; i != BUCKETS; i++) {
-            startIndexMap[i] = startIndexMap[i - 1] + bucketSizeMap[i - 1];
+            startIndexMap[i] = startIndexMap[i - 1] +
+                               bucketSizeMap[i - 1];
         }
         
-        for (int i = startIndex; i != endIndex; i++) {
-            final int index = getBucketIndex(sourceArray[i], recursionDepth);
-            targetArray[startIndexMap[index] + processedMap[index]++] = 
-                    sourceArray[i];
+        // Now we know where each bucket begins in the opposite array.
+        // Insert the actual, unsorted buckets into their correct buckets in the
+        // target array.
+        if (recursionDepth % 2 == 0) {
+            for (int i = sourceArrayFromIndex; 
+                     i != sourceArrayToIndex;
+                     i++) {
+                final int bucketIndex = getBucketIndex(sourceArray[i],
+                                                       recursionDepth);
+                final int elementIndex = startIndexMap[bucketIndex] +
+                                          processedMap[bucketIndex] -
+                                          auxiliaryBufferOffset;
+                processedMap[bucketIndex]++;
+                targetArray[elementIndex] = sourceArray[i]; 
+            } 
+        } else {
+            for (int i = sourceArrayFromIndex; 
+                     i != sourceArrayToIndex;
+                     i++) {
+                final int bucketIndex = getBucketIndex(sourceArray[i],
+                                                       recursionDepth);
+                final int elementIndex = startIndexMap[bucketIndex] +
+                                          processedMap[bucketIndex] +
+                                          auxiliaryBufferOffset;
+                processedMap[bucketIndex]++;
+                targetArray[elementIndex] = sourceArray[i];
         }
         
-        if (recursionDepth == LEAST_SIGNIFICANT_BYTE_INDEX) {
-            return;
-        }
-        
-        for (int i = 0; i != BUCKETS; i++) {
-            if (bucketSizeMap[i] != 0) {
-                sortImpl(targetArray,
-                         sourceArray,
-                         sourceArrayOffset,
-                         recursionDepth + 1,
-                         startIndexMap[i],
-                         startIndexMap[i] + bucketSizeMap[i]);
+        if (recursionDepth % 2 == 0) {
+            for (int i = 0; i != BUCKETS; i++) {
+                if (bucketSizeMap[i] != 0) {
+                    // We translate each index 'i' in 'sourceArray' to 
+                    // an index 'j' in 'targetArray'. In other words,
+                    // 'j = i - auxiliaryBufferOffset'.
+                    sortImpl(targetArray,
+                             sourceArray,
+                             auxiliaryBufferOffset,
+                             recursionDepth + 1,
+                             startIndexMap[i] - auxiliaryBufferOffset,
+                             startIndexMap[i] - auxiliaryBufferOffset 
+                                              + bucketSizeMap[i]); 
+                }
+            }
+        } else {
+            for (int i = 0; i != BUCKETS; i++) {
+                if (bucketSizeMap[i] != 0) {
+                    // We translate each index 'i' in 'sourceArray' to 
+                    // an index 'j' in 'targetArray'. In other words,
+                    // 'j = i + auxiliaryBufferOffset'. Unlike above, note the
+                    // minus signs.
+                    sortImpl(targetArray,
+                             sourceArray,
+                             auxiliaryBufferOffset,
+                             recursionDepth + 1,
+                             startIndexMap[i] + auxiliaryBufferOffset,
+                             startIndexMap[i] + auxiliaryBufferOffset 
+                                              + bucketSizeMap[i]); 
+                }
             }
         }
+//        
+//        int startIndex;
+//        int endIndex;
+//        
+//        if (recursionDepth % 2 == 0) {
+//            startIndex = sourceArrayFromIndex;
+//            endIndex   = sourceArrayToIndex;
+//        } else {
+//            startIndex = sourceArrayFromIndex - auxiliaryBufferOffset;
+//            endIndex   = sourceArrayToIndex - auxiliaryBufferOffset;
+//        }
+//        
+//        for (int i = startIndex; i != endIndex; i++) {
+//            int index = getBucketIndex(sourceArray[i], recursionDepth);
+//            bucketSizeMap[index]++;
+//        }
+//        
+//        startIndexMap[0] = sourceArrayFromIndex;
+//                fromIndex -
+//                (recursionDepth % 2 == 1 ? sourceArrayOffset : 0);
+//        
+//        for (int i = 1; i != BUCKETS; i++) {
+//            startIndexMap[i] = startIndexMap[i - 1] + bucketSizeMap[i - 1];
+//        }
+//        
+//        for (int i = startIndex; i != endIndex; i++) {
+//            final int index = getBucketIndex(sourceArray[i], recursionDepth);
+//            targetArray[startIndexMap[index] + processedMap[index]++] = 
+//                    sourceArray[i];
+//        }
+//        
+//        if (recursionDepth == LEAST_SIGNIFICANT_BYTE_INDEX) {
+//            return;
+//        }
+//        
+//        for (int i = 0; i != BUCKETS; i++) {
+//            if (bucketSizeMap[i] != 0) {
+//                sortImpl(targetArray,
+//                         sourceArray,
+//                         auxiliaryBufferOffset,
+//                         recursionDepth + 1,
+//                         startIndexMap[i],
+//                         startIndexMap[i] + bucketSizeMap[i]);
+//            }
+//        }
     }
     
     /////////////////////////////////////////////////////////////////////  /////

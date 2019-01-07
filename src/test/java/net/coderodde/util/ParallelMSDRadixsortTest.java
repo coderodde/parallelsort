@@ -180,6 +180,20 @@ public final class ParallelMSDRadixsortTest {
 //                 18);
         
         assertTrue(Arrays.equals(expectedArray, originalArray));
+        
+        originalArray = random.longs(100).toArray();
+        expectedArray = originalArray.clone();
+        
+        long startTime = System.currentTimeMillis();
+        Arrays.parallelSort(expectedArray, 5, 94);
+        long endTime = System.currentTimeMillis();
+        System.out.println("Time: " + (endTime - startTime) + " ms.");
+        
+        startTime = System.currentTimeMillis();
+        ParallelMSDRadixsort.parallelSort(originalArray, 5, 95);
+        endTime = System.currentTimeMillis();
+        
+        System.out.println("Time: " + (endTime - startTime) + " ms.");
     }
     
     private static Integer[] toIntegerArray(int[] array) {
