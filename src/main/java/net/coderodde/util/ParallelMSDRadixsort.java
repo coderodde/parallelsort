@@ -395,7 +395,7 @@ public final class ParallelMSDRadixsort {
                                      final int sourceArrayToIndex) {
         final int rangeLength = sourceArrayToIndex - sourceArrayFromIndex;
         
-        if (rangeLength <= /* QUICKSORT_THRESHOLD */ 1) {
+        if (rangeLength <= QUICKSORT_THRESHOLD) {
             quicksort(sourceArray,
                       sourceArrayFromIndex,
                       sourceArrayToIndex);
@@ -475,7 +475,7 @@ public final class ParallelMSDRadixsort {
                                        final int sourceArrayToIndex) {
         final int rangeLength = sourceArrayToIndex - sourceArrayFromIndex;
         
-        if (rangeLength <= /* QUICKSORT_THRESHOLD */ 1) {
+        if (rangeLength <= /* QUICKSORT_THRESHOLD */ 10) {
             if (recursionDepth % 2 == 0) {
                 // 'sourceArray' is the actual input array.
                 quicksort(sourceArray,

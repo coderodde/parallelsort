@@ -32,7 +32,7 @@ public final class ParallelMSDRadixsortTest {
         System.out.println("getUnsignedBucketIndex passed!");
     }
     
-//    @Test
+    @Test
     public void testSmallRadixsort() {
         long[] array1 = new long[]{ 10L << 56, 
                                     4L  << 56, 
@@ -197,9 +197,9 @@ public final class ParallelMSDRadixsortTest {
         }
     }
     
-//    @Test
+    @Test
     public void testSortImpl() {
-        long seed = 154642430474L; //System.currentTimeMillis();
+        long seed = System.currentTimeMillis();
         Random random = new Random(seed);
         System.out.println("> Seed = " + seed);
         long[] originalArray = random.longs(10).toArray();
@@ -218,12 +218,6 @@ public final class ParallelMSDRadixsortTest {
         
         ParallelMSDRadixsort.parallelSort(originalArray, 2, 8);
         System.out.println("> Half done.");
-//        sortImpl(auxBuffer,
-//                 originalArray,
-//                 2,
-//                 0,
-//                 2,
-//                 18);
         
         assertTrue(Arrays.equals(expectedArray, originalArray));
         
@@ -245,6 +239,33 @@ public final class ParallelMSDRadixsortTest {
         System.out.println(
                 "> ParallelMSDRadixsort.parallelSort time: " + 
                 (endTime - startTime) + " ms.");
+    }
+    
+    @Test
+    public void testSortingLargeArrays() {
+        long seed = System.currentTimeMillis();
+        Random random = new Random(seed);
+        
+        for (int iteration = 0; iteration < 1; iteration++) {
+            final int arrayLength = 1 + random.nextInt(1000_0000);
+            long[] originalArray = random.longs(arrayLength).toArray();
+            long[] expectedArray = originalArray;
+            
+            final int fromIndex = random.nextInt(10);
+            final int toIndex   = arrayLength - random.nextInt(10);
+            
+            Arrays.parallelSort(expectedArray, 
+                                fromIndex, 
+                                toIndex);
+            
+            ParallelMSDRadixsort.parallelSort(originalArray,
+                                              fromIndex, 
+                                              toIndex);
+            
+            assertTrue(Arrays.equals(expectedArray, originalArray));
+        }
+        
+        System.out.println("testSortingLargeArrays passed.");
     }
     
     private static Integer[] toIntegerArray(int[] array) {
