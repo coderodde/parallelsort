@@ -24,14 +24,15 @@ public final class ParallelMSDRadixsortTest {
     
     @Test
     public void testGetUnsignedBucketIndex() {
-        assertEquals(0xb9, getUnsignedBucketIndex(0xb900L, 1));
-        assertEquals(0xeb, getUnsignedBucketIndex(0xeb_0000L, 2));
-        assertEquals(0x32, getUnsignedBucketIndex(0x32_0000_0000L, 4));
-        assertEquals(0x26, getUnsignedBucketIndex(0x2600_0000_0000_0000L, 7));
+        assertEquals(0xb9, getUnsignedBucketIndex(0xb900L, 6));
+        assertEquals(0xeb, getUnsignedBucketIndex(0xeb_0000L, 5));
+        assertEquals(0x32, getUnsignedBucketIndex(0x32_0000_0000L, 3));
+        assertEquals(0x26, getUnsignedBucketIndex(0x2600_0000_0000_0000L, 0));
+        assertEquals(0x9a, getUnsignedBucketIndex(0x899a_1b1f_4daa_c336L, 1));
         System.out.println("getUnsignedBucketIndex passed!");
     }
     
-    @Test
+//    @Test
     public void testSmallRadixsort() {
         long[] array1 = new long[]{ 10L << 56, 
                                     4L  << 56, 
@@ -200,7 +201,7 @@ public final class ParallelMSDRadixsortTest {
     public void testSortImpl() {
         long seed = 154642430474L; //System.currentTimeMillis();
         Random random = new Random(seed);
-        System.out.println("parallelsort seed = " + seed);
+        System.out.println("> Seed = " + seed);
         long[] originalArray = random.longs(10).toArray();
         
         for (int i = 0; i < originalArray.length; i++) {
@@ -215,9 +216,8 @@ public final class ParallelMSDRadixsortTest {
                     2, 
                     8);
         
-        System.out.println("hello");
         ParallelMSDRadixsort.parallelSort(originalArray, 2, 8);
-        
+        System.out.println("> Half done.");
 //        sortImpl(auxBuffer,
 //                 originalArray,
 //                 2,
@@ -229,17 +229,22 @@ public final class ParallelMSDRadixsortTest {
         
         originalArray = random.longs(100).toArray();
         expectedArray = originalArray.clone();
+        int fromIndex = 5;
+        int toIndex = 95;
         
         long startTime = System.currentTimeMillis();
-        Arrays.parallelSort(expectedArray, 5, 94);
+        Arrays.parallelSort(expectedArray, fromIndex, toIndex);
         long endTime = System.currentTimeMillis();
-        System.out.println("Time: " + (endTime - startTime) + " ms.");
+        System.out.println(
+                "> Arrays.sort time: " + (endTime - startTime) + " ms.");
         
         startTime = System.currentTimeMillis();
-        ParallelMSDRadixsort.parallelSort(originalArray, 5, 95);
+        ParallelMSDRadixsort.parallelSort(originalArray, fromIndex, toIndex);
         endTime = System.currentTimeMillis();
         
-        System.out.println("Time: " + (endTime - startTime) + " ms.");
+        System.out.println(
+                "> ParallelMSDRadixsort.parallelSort time: " + 
+                (endTime - startTime) + " ms.");
     }
     
     private static Integer[] toIntegerArray(int[] array) {

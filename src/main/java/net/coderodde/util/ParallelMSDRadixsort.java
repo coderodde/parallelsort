@@ -25,7 +25,7 @@ public final class ParallelMSDRadixsort {
     /**
      * The mask for extracting the bucket bits.
      */
-    private static final int BUCKET_MASK = BUCKETS - 1;
+    private static final int BUCKET_MASK = 0xff;
     
     /**
      * The mask needed to manipulate the sign bit.
@@ -888,7 +888,7 @@ public final class ParallelMSDRadixsort {
     }
     
     static final int getSignedBucketIndex(final long key) {
-        final int bitShift = Long.SIZE - Byte.SIZE;
+        final int bitShift = (Long.BYTES - 1) * Byte.SIZE;
         return (int)((key >>> bitShift) ^ 0b1000_0000);
         // ... & 0b1000_0000 flips the sign bit so that all the negative value
         // buckets end up before the positive ones.
@@ -897,8 +897,8 @@ public final class ParallelMSDRadixsort {
     
     static final int getUnsignedBucketIndex(final long key,
                                             final int byteIndex) {
-        final int bitShift = Long.SIZE - (Long.BYTES - byteIndex) * Byte.SIZE;
-        return (int)(key >>> bitShift);
+        final int bitShift = (Long.BYTES - byteIndex - 1) * Byte.SIZE;
+        return (int)(key >>> bitShift) & BUCKET_MASK;
     }
 
     public static void quicksort(long[] array, 
