@@ -14,10 +14,12 @@ public class Demo {
     
     public static void benchmarkLongArrays() {
         final long SEED = System.currentTimeMillis();
-        final int SIZE = 60_000_000;
+        final int SIZE = 6_000_000;
         final Random rnd = new Random(SEED);
         final long[] array1 = rnd.longs(SIZE).toArray();
         final long[] array2 = array1.clone();
+        
+        System.out.println("> benchmarkLongArrays(), seed = " + SEED);
         
         long startTime = System.currentTimeMillis();
         ParallelMSDRadixsort.parallelSort(array1, 10, array1.length - 10);
@@ -32,8 +34,7 @@ public class Demo {
         
         System.out.println("> Arrays.parallelSort in " +
                            (endTime - startTime) + " ms.");
-        System.out.println("Algorithms agree: " +
-                           Arrays.equals(array1, array2));
+        System.out.println("Algorithms agree: " + areEqual(array1, array2));
     }
     
 //    public static void benchmarkParallelArrays() {
@@ -71,4 +72,18 @@ public class Demo {
 //                                                           array2, 
 //                                                           array3));
 //    }
+    
+    private static boolean areEqual(long[] array1, long[] array2) {
+        if (array1.length != array2.length) {
+            return false;
+        }
+        
+        for (int i = 0; i < array1.length; i++) {
+            if (array1[i] != array2[i]) {
+                return false;
+            }
+        }
+        
+        return true;
+    }
 }

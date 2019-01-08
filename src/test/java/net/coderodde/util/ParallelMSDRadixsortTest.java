@@ -248,14 +248,15 @@ public final class ParallelMSDRadixsortTest {
     
     @Test
     public void testSortingLargeArrays() {
-        long seed = System.currentTimeMillis();
+        long seed = 1546967087107L; //System.currentTimeMillis();
         Random random = new Random(seed);
+        System.out.println("> seed = " + seed);
         
-        for (int iteration = 0; iteration < 5; iteration++) {
+        for (int iteration = 0; iteration < 3; iteration++) {
             System.out.println("Iteration: " + iteration);
-            final int arrayLength = 1 + random.nextInt(1000_0000);
+            final int arrayLength = 1 + random.nextInt(10_000);
             long[] originalArray = random.longs(arrayLength).toArray();
-            long[] expectedArray = originalArray;
+            long[] expectedArray = originalArray.clone();
             
             final int fromIndex = random.nextInt(10);
             final int toIndex   = arrayLength - random.nextInt(10);
@@ -265,7 +266,7 @@ public final class ParallelMSDRadixsortTest {
                                 toIndex);
             
             ParallelMSDRadixsort.parallelSort(originalArray,
-                                              fromIndex + 1, 
+                                              fromIndex, 
                                               toIndex);
             
             assertTrue(Arrays.equals(expectedArray, originalArray));
