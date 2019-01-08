@@ -106,8 +106,8 @@ public final class ParallelMSDRadixsort {
      * @param targetArrayOffset the target array offset
      * @param threads           the number of threads to use.
      * @param recursionDepth    the recursion depth.
-     * @param fromIndex         the logical starting index of the range to sort.
-     * @param toIndex           the logical ending index of the range to sort.
+     * @param sourceArrayFromIndex         the logical starting index of the range to sort.
+     * @param sourceArrayToIndex           the logical ending index of the range to sort.
      * @param offset 
      */
     private static void parallelSortImpl(final long[] sourceArray,
@@ -115,14 +115,13 @@ public final class ParallelMSDRadixsort {
                                          final int sourceArrayOffset,
                                          final int threads,
                                          final int recursionDepth, 
-                                         final int fromIndex,
-                                         final int toIndex) {
-        sortImpl(sourceArray,
-                 targetArray,
-                 sourceArrayOffset,
-                 0,
-                 fromIndex,
-                 toIndex);
+                                         final int sourceArrayFromIndex,
+                                         final int sourceArrayToIndex) {
+        sortImplSigned(sourceArray,
+                       targetArray,
+                       sourceArrayOffset,
+                       sourceArrayFromIndex,
+                       sourceArrayToIndex);
 //        final int rangeLength = toIndex - fromIndex;
 //        
 //        if (rangeLength < QUICKSORT_THRESHOLD) {
@@ -389,12 +388,91 @@ public final class ParallelMSDRadixsort {
      * @param sourceArrayToIndex    the ending, exclusive index into the actual
      *                              range in the source array.
      */
-    static final void sortImpl(final long[] sourceArray,
-                               final long[] targetArray,
-                               final int auxiliaryBufferOffset,
-                               final int recursionDepth,
-                               final int sourceArrayFromIndex,
-                               final int sourceArrayToIndex) {
+    static final void sortImplSigned(final long[] sourceArray,
+                                     final long[] targetArray,
+                                     final int auxiliaryBufferOffset,
+                                     final int sourceArrayFromIndex,
+                                     final int sourceArrayToIndex) {
+        final int rangeLength = sourceArrayToIndex - sourceArrayFromIndex;
+        
+        if (rangeLength <= /* QUICKSORT_THRESHOLD */ 1) {
+            quicksort(sourceArray,
+                      sourceArrayFromIndex,
+                      sourceArrayToIndex);
+            return;
+        }
+        
+        final int[] bucketSizeMap = new int[BUCKETS];
+        final int[] startIndexMap = new int[BUCKETS];
+        final int[] processedMap  = new int[BUCKETS];
+        
+        // Find out the size of each bucket in the current source array range.
+        for (int i = sourceArrayFromIndex; 
+                 i != sourceArrayToIndex;
+                 i++) {
+            final int bucketIndex = getSignedBucketIndex(sourceArray[i]);
+            bucketSizeMap[bucketIndex]++;
+        }
+        
+        // Compute the indices of the first element in each bucket.
+        startIndexMap[0] = sourceArrayFromIndex /*- (recursionDepth == 0 ?
+                                                   0 :
+                                                   auxiliaryBufferOffset)*/;
+        
+        for (int i = 1; i != BUCKETS; i++) {
+            startIndexMap[i] = startIndexMap[i - 1] +
+                               bucketSizeMap[i - 1];
+        }
+        
+        for (int i = sourceArrayFromIndex; 
+                 i != sourceArrayToIndex;
+                 i++) {
+            final int bucketIndex = getSignedBucketIndex(sourceArray[i]);
+            final int elementIndex = startIndexMap[bucketIndex] +
+                                      processedMap[bucketIndex] -
+                                      auxiliaryBufferOffset;
+            processedMap[bucketIndex]++;
+            targetArray[elementIndex] = sourceArray[i]; 
+        } 
+        
+        for (int i = 0; i != BUCKETS; i++) {
+            if (bucketSizeMap[i] != 0) {
+                // We translate each index 'i' in 'sourceArray' to 
+                // an index 'j' in 'targetArray'. In other words,
+                // 'j = i - auxiliaryBufferOffset'.
+                sortImplUnsigned(targetArray,
+                                 sourceArray,
+                                 auxiliaryBufferOffset,
+                                 1,
+                                 startIndexMap[i] - auxiliaryBufferOffset,
+                                 startIndexMap[i] - auxiliaryBufferOffset 
+                                                  + bucketSizeMap[i]); 
+            }
+        }
+    }
+    
+    /**
+     * Performs serial sorting over a requested range. The values of 
+     * {@code fromIndex} and {@code toIndex} must be set accordingly by the
+     * caller method.
+     * 
+     * @param sourceArray           the array that contains all the correct values
+     *                              but in an arbitrary order.
+     * @param targetArray           the array holding the targeted range to sort.
+     * @param auxiliaryBufferOffset the offset of the auxiliary buffer.
+     * @param recursionDepth        the depth of recursion. The value of zero stands
+     *                              for the most-significant byte.
+     * @param sourceArrayFromIndex  the starting, inclusive index into the actual 
+     *                              range in the source array.
+     * @param sourceArrayToIndex    the ending, exclusive index into the actual
+     *                              range in the source array.
+     */
+    static final void sortImplUnsigned(final long[] sourceArray,
+                                       final long[] targetArray,
+                                       final int auxiliaryBufferOffset,
+                                       final int recursionDepth,
+                                       final int sourceArrayFromIndex,
+                                       final int sourceArrayToIndex) {
         final int rangeLength = sourceArrayToIndex - sourceArrayFromIndex;
         
         if (rangeLength <= /* QUICKSORT_THRESHOLD */ 1) {
@@ -427,11 +505,10 @@ public final class ParallelMSDRadixsort {
         
         // Find out the size of each bucket in the current source array range.
         for (int i = sourceArrayFromIndex; 
-                i != sourceArrayToIndex;
-                i++) {
+                 i != sourceArrayToIndex;
+                 i++) {
             final int bucketIndex = getUnsignedBucketIndex(sourceArray[i], 
-                                                   recursionDepth);
-            
+                                                           recursionDepth);
             bucketSizeMap[bucketIndex]++;
         }
         
@@ -449,11 +526,13 @@ public final class ParallelMSDRadixsort {
         // Insert the actual, unsorted buckets into their correct buckets in the
         // target array.
         if (recursionDepth % 2 == 0) {
+            // Here, 'sourceArray' is the actual input array and 'targetArray'
+            // is the actuall auxiliary buffer.
             for (int i = sourceArrayFromIndex; 
                      i != sourceArrayToIndex;
                      i++) {
                 final int bucketIndex = getUnsignedBucketIndex(sourceArray[i],
-                                                       recursionDepth);
+                                                               recursionDepth);
                 final int elementIndex = startIndexMap[bucketIndex] +
                                           processedMap[bucketIndex] -
                                           auxiliaryBufferOffset;
@@ -465,7 +544,7 @@ public final class ParallelMSDRadixsort {
                      i != sourceArrayToIndex;
                      i++) {
                 final int bucketIndex = getUnsignedBucketIndex(sourceArray[i],
-                                                       recursionDepth);
+                                                               recursionDepth);
                 final int elementIndex = startIndexMap[bucketIndex] +
                                           processedMap[bucketIndex] +
                                           auxiliaryBufferOffset;
@@ -479,13 +558,13 @@ public final class ParallelMSDRadixsort {
                     // We translate each index 'i' in 'sourceArray' to 
                     // an index 'j' in 'targetArray'. In other words,
                     // 'j = i - auxiliaryBufferOffset'.
-                    sortImpl(targetArray,
-                             sourceArray,
-                             auxiliaryBufferOffset,
-                             recursionDepth + 1,
-                             startIndexMap[i] - auxiliaryBufferOffset,
-                             startIndexMap[i] - auxiliaryBufferOffset 
-                                              + bucketSizeMap[i]); 
+                    sortImplUnsigned(targetArray,
+                                     sourceArray,
+                                     auxiliaryBufferOffset,
+                                     recursionDepth + 1,
+                                     startIndexMap[i] - auxiliaryBufferOffset,
+                                     startIndexMap[i] - auxiliaryBufferOffset 
+                                                      + bucketSizeMap[i]); 
                 }
             }
         } else {
@@ -495,7 +574,7 @@ public final class ParallelMSDRadixsort {
                     // an index 'j' in 'targetArray'. In other words,
                     // 'j = i + auxiliaryBufferOffset'. Unlike above, note the
                     // minus signs.
-                    sortImpl(targetArray,
+                    sortImplUnsigned(targetArray,
                              sourceArray,
                              auxiliaryBufferOffset,
                              recursionDepth + 1,
@@ -741,7 +820,7 @@ public final class ParallelMSDRadixsort {
                                      longTask.fromIndex,
                                      longTask.toIndex);
                 } else {
-                    sortImpl(longTask.sourceArray,
+                    sortImplUnsigned(longTask.sourceArray,
                              longTask.targetArray,
                              longTask.sourceArrayOffset,
                              longTask.recursionDepth,

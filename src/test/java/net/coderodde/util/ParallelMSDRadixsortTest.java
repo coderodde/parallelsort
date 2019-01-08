@@ -10,7 +10,7 @@ import static net.coderodde.util.ParallelMSDRadixsort.getSignedBucketIndex;
 import static net.coderodde.util.ParallelMSDRadixsort.getUnsignedBucketIndex;
 import static net.coderodde.util.ParallelMSDRadixsort.insertionsortBucketIndices;
 import static net.coderodde.util.ParallelMSDRadixsort.quicksortBucketIndices;
-import static net.coderodde.util.ParallelMSDRadixsort.sortImpl;
+import static net.coderodde.util.ParallelMSDRadixsort.sortImplUnsigned;
 
 public final class ParallelMSDRadixsortTest {
     
@@ -19,7 +19,7 @@ public final class ParallelMSDRadixsortTest {
         assertEquals(0b0111_1111, getSignedBucketIndex(0xff00_0000_0000_0000L));
         assertEquals(0xff, getSignedBucketIndex(0x7f00_0000_0000_0000L));
         assertEquals(0xa3, getSignedBucketIndex(0x2300_0000_0000_0000L));
-        System.out.println("getSignedBucketIndex passed.");
+        System.out.println("getSignedBucketIndex passed!");
     }
     
     @Test
@@ -28,26 +28,29 @@ public final class ParallelMSDRadixsortTest {
         assertEquals(0xeb, getUnsignedBucketIndex(0xeb_0000L, 2));
         assertEquals(0x32, getUnsignedBucketIndex(0x32_0000_0000L, 4));
         assertEquals(0x26, getUnsignedBucketIndex(0x2600_0000_0000_0000L, 7));
-        System.out.println("getUnsignedBucketIndex passed,");
+        System.out.println("getUnsignedBucketIndex passed!");
     }
     
-//    @Test
+    @Test
     public void testSmallRadixsort() {
-        long[] array1 = new long[]{ 10 << 56, 
-                                    4  << 56, 
-                                    3  << 56, 
-                                    4  << 56, 
-                                    -1 << 56, 
-                                    2  << 56, 
-                                    5  << 56, 
-                                    8  << 56, 
-                                    9  << 56 };
+        long[] array1 = new long[]{ 10L << 56, 
+                                    4L  << 56, 
+                                    3L  << 56, 
+                                    
+                                    4L  << 56, 
+                                    -1L << 56, 
+                                    2L  << 56, 
+                                    
+                                    5L  << 56, 
+                                    8L  << 56, 
+                                    9L  << 56 };
         long[] array2 = array1.clone();
         
         Arrays.sort(array1, 1, array1.length - 1);
         ParallelMSDRadixsort.parallelSort(array2, 1, array2.length - 1);
         
         assertTrue(Arrays.equals(array1, array2));
+        System.out.println("testSmallRadixsort passed!");
     }
     
 //    @Test
