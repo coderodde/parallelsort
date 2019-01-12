@@ -5,7 +5,7 @@ package net.coderodde.util;
  * @author Rodion "rodde" Efremov
  * @version 1.6 (Jan 12, 2019)
  */
-final class LongBuckeSizetCountingThreadUnsigned extends Thread {
+final class UnsignedLongBuckeSizeCountingThread extends Thread {
     
     /**
      * The number of distinct buckets considered at each sort invocation. This

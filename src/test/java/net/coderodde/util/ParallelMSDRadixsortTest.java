@@ -310,23 +310,24 @@ public final class ParallelMSDRadixsortTest {
     public void testParallelSortImpl() {
         long seed = System.currentTimeMillis();
         Random random = new Random(seed);
+        System.out.println("> Seed = " + seed);
         
-        long[] expectedArray = random.longs(1_000_000).toArray();
+        long[] expectedArray = random.longs(100).toArray();
         
-//        for (int i = 0; i < expectedArray.length; i++) {
-//            expectedArray[i] >>>= 56;
-//        }
-        
+        for (int i = 0; i < expectedArray.length; i++) {
+//            expectedArray[i] >>>= 48;
+        }
         
         long[] originalArray = expectedArray.clone();
         
         Arrays.sort(expectedArray, 
-                    7, 
-                    expectedArray.length - 9);
+                    2, 
+                    expectedArray.length - 1);
         
         ParallelMSDRadixsort.parallelSort(originalArray,
-                                          7, 
-                                          originalArray.length - 9);
+                                          2, 
+                                          originalArray.length - 1);
+        assertTrue(areEqual(expectedArray, originalArray));
         assertTrue(Arrays.equals(expectedArray, originalArray));
         System.out.println("OH YEAH");
     }

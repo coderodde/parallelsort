@@ -35,12 +35,12 @@ public final class ParallelMSDRadixsort {
     /**
      * The minimum amount of entries to sort for a thread (2^16).
      */
-    private static final int THREAD_THRESHOLD = 65536;
+    private static final int THREAD_THRESHOLD = 10;
     
     /**
      * The maximum length of a range to sort using quick sort.
      */
-    private static final int QUICKSORT_THRESHOLD = 4096;
+    private static final int QUICKSORT_THRESHOLD = 2;
     
     /**
      * The index of the least significant byte. For example, the index of the
@@ -151,9 +151,11 @@ public final class ParallelMSDRadixsort {
         
         for (int i = 0; i != threads - 1; i++, startIndex += subrangeLength) {
             bucketSizeCounters[i] = 
-                    new SignedLongBucketSizeCountingThread(sourceArray,
-                                                           sourceArrayFromIndex,
-                                                           sourceArrayToIndex);
+                    new SignedLongBucketSizeCountingThread(
+                            sourceArray,
+                            startIndex,
+                            startIndex + subrangeLength);
+            bucketSizeCounters[i].start();
         }
         
         SignedLongBucketSizeCountingThread lastCounterThread = 
@@ -175,7 +177,7 @@ public final class ParallelMSDRadixsort {
         final int[] startIndexMap = new int[BUCKETS];
         
         // Count the size of each bucket.
-        for (int i = 0; i != threads - 1; i++) {
+        for (int i = 0; i != bucketSizeCounters.length; i++) {
             SignedLongBucketSizeCountingThread counter = bucketSizeCounters[i];
             
             for (int j = 0; j != BUCKETS; j++) {
@@ -223,6 +225,7 @@ public final class ParallelMSDRadixsort {
                             auxiliaryBufferOffset,
                             startIndex,
                             startIndex + subrangeLength);
+            inserterThreads[i].start();
         }
         
         new SignedLongBucketInserterThread(sourceArray, 
@@ -230,8 +233,253 @@ public final class ParallelMSDRadixsort {
                                            startIndexMap, 
                                            processedMaps[threads - 1], 
                                            auxiliaryBufferOffset, 
-                                           sourceArrayFromIndex, 
+                                           startIndex, 
                                            sourceArrayToIndex).run();
+        
+        try {
+            for (int i = 0; i != inserterThreads.length; i++) {
+                inserterThreads[i].join();
+            }
+        } catch (InterruptedException ex) {
+            throw new RuntimeException("Problems with multithreading.", ex);
+        }
+        
+        int numberOfNonEmptyBuckets = 0;
+        
+        for (int i : bucketSizeMap) {
+            if (i != 0) {
+                numberOfNonEmptyBuckets++;
+            }
+        }
+        
+        final int spawnDegree = Math.min(numberOfNonEmptyBuckets, threads);
+        IntArray[] bucketIndexListArray = new IntArray[spawnDegree];
+        
+        for (int i = 0; i != spawnDegree; i++) {
+            bucketIndexListArray[i] = new IntArray(numberOfNonEmptyBuckets);
+        }
+        
+        final int[] threadCountMap = new int[spawnDegree];
+        
+        for (int i = 0; i != spawnDegree; i++) {
+            threadCountMap[i] = threads / spawnDegree;
+        }
+        
+        for (int i = 0; i != threads % spawnDegree; i++) {
+            threadCountMap[i]++;
+        }
+            
+        IntArray nonEmptyBucketIndices = new IntArray(numberOfNonEmptyBuckets);
+        
+        for (int i = 0; i != BUCKETS; i++) {
+            if (bucketSizeMap[i] != 0) {
+                nonEmptyBucketIndices.add(i);
+            }
+        }
+        
+        quicksortBucketIndices(nonEmptyBucketIndices.array,
+                               0,
+                               nonEmptyBucketIndices.size,
+                               bucketSizeMap);
+        
+        final int optimalSubrangeLength = rangeLength / spawnDegree;
+        int listIndex = 0;
+        int elementsPacked = 0;
+        int f = 0;
+        int j = 0;
+        
+        while (j < nonEmptyBucketIndices.size) {
+            elementsPacked += bucketSizeMap[nonEmptyBucketIndices.array[j++]];
+            
+            if (elementsPacked >= optimalSubrangeLength
+                    || j == nonEmptyBucketIndices.size) {
+                elementsPacked = 0;
+                
+                for (int i = f; i < j; i++) {
+                    bucketIndexListArray[listIndex]
+                            .add(nonEmptyBucketIndices.array[i]);
+                }
+                
+                listIndex++;
+                f = j;
+            }
+        }
+        
+        LongBucketSorterInputTask[][] taskMatrix = 
+                new LongBucketSorterInputTask[spawnDegree][];
+        
+        for (int threadIndex = 0; threadIndex != spawnDegree; threadIndex++) {
+            taskMatrix[threadIndex] =
+                    new LongBucketSorterInputTask[bucketIndexListArray[threadIndex].size];
+            
+            for (int i = 0; i != bucketIndexListArray[threadIndex].size; i++) {
+                taskMatrix[threadIndex][i] =
+                        new LongBucketSorterInputTask(
+                                targetArray,
+                                sourceArray,
+                                threadCountMap[threadIndex],
+                                1,
+                                sourceArrayFromIndex - auxiliaryBufferOffset,
+                                sourceArrayToIndex   - auxiliaryBufferOffset,
+                                sourceArrayFromIndex);
+            }
+        }
+            
+        LongSorterThread[] sorterThreads = new LongSorterThread[spawnDegree];
+        
+        for (int i = 0; i != spawnDegree - 1; i++) {
+            sorterThreads[i] = new LongSorterThread(taskMatrix[i]);
+            sorterThreads[i].start();
+        }
+            
+        new LongSorterThread(taskMatrix[spawnDegree - 1]).run();
+        
+        try {
+            for (int i = 0; i != spawnDegree - 1; i++) {
+                sorterThreads[i].join();
+            }
+        } catch (InterruptedException ex) {
+            throw new RuntimeException("Problems with multithreading.", ex);
+        }   
+    }
+    
+    /**
+     * Sorts in parallel the range {@code source[sourceArrayOffset + fromIndex], 
+     * ..., source[sourceArrayOffset + toIndex - 1]} placing the sorted range
+     * into {@code target[targetArrayOffset + fromIndex], ...,
+     * target[targetArrayOffset + toIndex - 1]}.
+     * 
+     * @param sourceArray       the source array.
+     * @param targetArray       the target array.
+     * @param auxiliaryBufferOffset the source array offset.
+     * @param targetArrayOffset the target array offset
+     * @param threads           the number of threads to use.
+     * @param recursionDepth    the recursion depth.
+     * @param sourceArrayFromIndex         the logical starting index of the range to sort.
+     * @param sourceArrayToIndex           the logical ending index of the range to sort.
+     * @param offset 
+     */
+    private static void parallelSortImplUnsigned(final long[] sourceArray,
+                                                 final long[] targetArray,
+                                                 final int auxiliaryBufferOffset,
+                                                 final int threads,
+                                                 final int recursionDepth,
+                                                 final int sourceArrayFromIndex,
+                                                 final int sourceArrayToIndex) {
+        final int rangeLength = sourceArrayToIndex - sourceArrayFromIndex;
+        
+        if (rangeLength < QUICKSORT_THRESHOLD) {
+            quicksort(sourceArray, 
+                      sourceArrayFromIndex, 
+                      sourceArrayToIndex);
+            return;
+        }
+        
+        if (threads < 2) {
+            // No multithreading is suitable, sort serially.
+            sortImplUnsigned(sourceArray, 
+                           targetArray, 
+                           auxiliaryBufferOffset,
+                           recursionDepth,
+                           sourceArrayFromIndex,
+                           sourceArrayToIndex);
+            return;
+        }
+        
+        final UnsignedLongBucketSizeCountingThread[] bucketSizeCounters = 
+                new UnsignedLongBucketSizeCountingThread [threads - 1];
+        
+        final int subrangeLength = rangeLength / threads;
+        int startIndex = sourceArrayFromIndex;
+        
+        for (int i = 0; i != threads - 1; i++, startIndex += subrangeLength) {
+            bucketSizeCounters[i] = 
+                    new SignedLongBucketSizeCountingThread(
+                            sourceArray,
+                            startIndex,
+                            startIndex + subrangeLength);
+            bucketSizeCounters[i].start();
+        }
+        
+        UnsignedLongBucketSizeCountingThread lastCounterThread = 
+        new UnsignedLongBucketSizeCountingThread(sourceArray,
+                                                 startIndex,
+                                                 sourceArrayToIndex);
+        
+        lastCounterThread.run();
+        
+        for (UnsignedLongBucketSizeCountingThread thread : bucketSizeCounters) {
+//            try {
+                thread.join();
+//            } catch (InterruptedException ex) {
+//                throw new RuntimeException("Problems with multithreading.", ex);
+//            }
+        }
+        
+        final int[] bucketSizeMap = new int[BUCKETS];
+        final int[] startIndexMap = new int[BUCKETS];
+        
+        // Count the size of each bucket.
+        for (int i = 0; i != bucketSizeCounters.length; i++) {
+            UnsignedLongBucketSizeCountingThread counter = bucketSizeCounters[i];
+            
+            for (int j = 0; j != BUCKETS; j++) {
+                bucketSizeMap[j] += counter.localBucketSizeMap[j];
+            }
+        }
+        
+        // Handle the last counter thread.
+        for (int j = 0; j != BUCKETS; j++) {
+            bucketSizeMap[j] += lastCounterThread.localBucketSizeMap[j];
+        }
+        
+        // Prepare the starting indices of each bucket.
+        startIndexMap[0] = sourceArrayFromIndex;
+        
+        for (int i = 1; i != BUCKETS; i++) {
+            startIndexMap[i] = startIndexMap[i - 1] +
+                               bucketSizeMap[i - 1];
+        }
+        
+        UnsignedLongBucketInserterThread[] inserterThreads = 
+                new UnsignedLongBucketInserterThread[threads - 1];
+        
+        int[][] processedMaps = new int[threads][BUCKETS];
+        
+        for (int i = 1; i != threads; i++) {
+            int[] partialBucketSizeMap = 
+                    bucketSizeCounters[i - 1].localBucketSizeMap; 
+            
+            for (int j = 0; j != BUCKETS; j++) {
+                processedMaps[i][j] = 
+                processedMaps[i - 1][j] + partialBucketSizeMap[j];
+            }
+        }
+        
+        startIndex = sourceArrayFromIndex;
+        
+        for (int i = 0; i != threads - 1; i++, startIndex += subrangeLength) {
+            inserterThreads[i] = 
+                    new UnsignedLongBucketInserterThread(
+                            sourceArray,
+                            targetArray,
+                            startIndexMap,
+                            processedMaps[i],
+                            auxiliaryBufferOffset,
+                            recursionDepth,
+                            startIndex,
+                            startIndex + subrangeLength);
+            inserterThreads[i].start();
+        }
+        
+        new UnsignedLongBucketInserterThread(sourceArray, 
+                                            targetArray, 
+                                            startIndexMap, 
+                                            processedMaps[threads - 1], 
+                                            auxiliaryBufferOffset, 
+                                            recursionDepth,
+                                            startIndex, 
+                                            sourceArrayToIndex).run();
         
         try {
             for (int i = 0; i != inserterThreads.length; i++) {
