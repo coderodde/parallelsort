@@ -246,9 +246,9 @@ public final class ParallelMSDRadixsortTest {
         System.out.println("testSortImpl passed!");
     }
     
-    @Test
+//    @Test
     public void testSortingLargeArrays() {
-        long seed = 123L; //System.currentTimeMillis();
+        long seed = System.currentTimeMillis();
         Random random = new Random(seed);
         System.out.println("> seed = " + seed);
         
@@ -304,6 +304,31 @@ public final class ParallelMSDRadixsortTest {
         
         assertTrue(Arrays.equals(array1, array2));
         System.out.println("testRecursionDepth2 passed!");
+    }
+    
+    @Test
+    public void testParallelSortImpl() {
+        long seed = System.currentTimeMillis();
+        Random random = new Random(seed);
+        
+        long[] expectedArray = random.longs(1_000_000).toArray();
+        
+//        for (int i = 0; i < expectedArray.length; i++) {
+//            expectedArray[i] >>>= 56;
+//        }
+        
+        
+        long[] originalArray = expectedArray.clone();
+        
+        Arrays.sort(expectedArray, 
+                    7, 
+                    expectedArray.length - 9);
+        
+        ParallelMSDRadixsort.parallelSort(originalArray,
+                                          7, 
+                                          originalArray.length - 9);
+        assertTrue(Arrays.equals(expectedArray, originalArray));
+        System.out.println("OH YEAH");
     }
     
     private static Integer[] toIntegerArray(int[] array) {
