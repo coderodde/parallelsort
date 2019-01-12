@@ -32,7 +32,7 @@ public final class ParallelMSDRadixsortTest {
         System.out.println("getUnsignedBucketIndex passed!");
     }
     
-    @Test
+//    @Test
     public void testSmallRadixsort() {
         long[] array1 = new long[]{ 10L << 56, 
                                     4L  << 56, 
@@ -197,7 +197,7 @@ public final class ParallelMSDRadixsortTest {
         }
     }
     
-    @Test
+//    @Test
     public void testSortImpl() {
         long seed = System.currentTimeMillis();
         Random random = new Random(seed);
@@ -246,9 +246,9 @@ public final class ParallelMSDRadixsortTest {
         System.out.println("testSortImpl passed!");
     }
     
-    @Test
+//    @Test
     public void testSortingLargeArrays() {
-        long seed = 1546967087107L; //System.currentTimeMillis();
+        long seed = 123L; //System.currentTimeMillis();
         Random random = new Random(seed);
         System.out.println("> seed = " + seed);
         
@@ -269,10 +269,41 @@ public final class ParallelMSDRadixsortTest {
                                               fromIndex, 
                                               toIndex);
             
-            assertTrue(Arrays.equals(expectedArray, originalArray));
+            assertTrue(areEqual(expectedArray, originalArray));
         }
         
         System.out.println("testSortingLargeArrays passed.");
+    }
+    
+    @Test
+    public void testRecursionDepth2() {
+        long[] array1 = new long[]{
+            0x12,
+            0x11,
+            0x15,
+            
+            0x14,
+            0x13,
+            0x10,
+            
+            0x19,
+            0x18,
+            0x16,
+            
+            0x17,
+        };
+        
+        for (int i = 0; i < array1.length; i++) {
+            array1[i] <<= 16;
+        }
+        
+        long[] array2 = array1.clone();
+        
+        Arrays.sort(array2, 1, array2.length - 1);
+        ParallelMSDRadixsort.parallelSort(array1, 1, array1.length - 1);
+        
+        assertTrue(Arrays.equals(array1, array2));
+        System.out.println("testRecursionDepth2 passed!");
     }
     
     private static Integer[] toIntegerArray(int[] array) {
@@ -283,6 +314,20 @@ public final class ParallelMSDRadixsortTest {
         }
         
         return result;
+    }
+    
+    private static boolean areEqual(long[] array1, long[] array2) {
+        if (array1.length != array2.length) {
+            return false;
+        }
+        
+        for (int i = 0; i < array1.length; i++) {
+            if (array1[i] != array2[i]) {
+                return false;
+            }
+        }
+        
+        return true;
     }
     
     private static void arraysSort(Integer[] array,
