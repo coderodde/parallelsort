@@ -10,7 +10,7 @@ import java.util.Random;
  */
 public final class LongDemo {
     
-    private static final int LONGS = 60_000_000;
+    private static final int LONGS = 6_000_000;
     private static final int FROM_INDEX = 10;
     private static final int TO_INDEX = LONGS - 10;
     
@@ -23,7 +23,7 @@ public final class LongDemo {
         
         long startTime = System.currentTimeMillis();
         
-        CoderoddeArrays.parallelSort(array2, FROM_INDEX, TO_INDEX);
+        ParallelMSDRadixsort.parallelSort(array2, FROM_INDEX, TO_INDEX);
         
         long endTime = System.currentTimeMillis();
         

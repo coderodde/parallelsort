@@ -14,7 +14,7 @@ public class Demo {
     
     public static void benchmarkLongArrays() {
         final long SEED = System.currentTimeMillis();
-        final int SIZE = 6_000_000;
+        final int SIZE = 10_000_000;
         final Random rnd = new Random(SEED);
         final long[] array1 = rnd.longs(SIZE).toArray();
         final long[] array2 = array1.clone();

@@ -5,7 +5,7 @@ import java.util.Random;
 import java.util.stream.IntStream;
 import org.junit.Test;
 import static org.junit.Assert.*;
-;
+
 import static net.coderodde.util.ParallelMSDRadixsort.getSignedBucketIndex;
 import static net.coderodde.util.ParallelMSDRadixsort.getUnsignedBucketIndex;
 import static net.coderodde.util.ParallelMSDRadixsort.insertionsortBucketIndices;
@@ -32,7 +32,7 @@ public final class ParallelMSDRadixsortTest {
         System.out.println("getUnsignedBucketIndex passed!");
     }
     
-//    @Test
+    @Test
     public void testSmallRadixsort() {
         long[] array1 = new long[]{ 10L << 56, 
                                     4L  << 56, 
@@ -197,7 +197,7 @@ public final class ParallelMSDRadixsortTest {
         }
     }
     
-//    @Test
+    @Test
     public void testSortImpl() {
         long seed = System.currentTimeMillis();
         Random random = new Random(seed);
@@ -246,7 +246,7 @@ public final class ParallelMSDRadixsortTest {
         System.out.println("testSortImpl passed!");
     }
     
-//    @Test
+    @Test
     public void testSortingLargeArrays() {
         long seed = 123L; //System.currentTimeMillis();
         Random random = new Random(seed);
@@ -254,7 +254,7 @@ public final class ParallelMSDRadixsortTest {
         
         for (int iteration = 0; iteration < 3; iteration++) {
             System.out.println("Iteration: " + iteration);
-            final int arrayLength = 1 + random.nextInt(10_000);
+            final int arrayLength = 1 + random.nextInt(1000_000);
             long[] originalArray = random.longs(arrayLength).toArray();
             long[] expectedArray = originalArray.clone();
             
