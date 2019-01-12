@@ -65,8 +65,10 @@ final class UnsignedLongBucketInserterThread extends Thread {
      * @param targetArray           the target array.
      * @param startIndexMap         the map of bucket starting indices.
      * @param processedMap          the map counting number of inserted elements.
-     * @param auxiliaryBufferOffset the smallest, inclusive index of the range to 
-     *                              bucketize.
+     * @param auxiliaryBufferOffset the smallest, inclusive index of the range 
+     *                              to bucketize.
+     * @param recursionDepth        the index of the byte to consider as the 
+     *                              bucket index.
      * @param sourceArrayFromIndex  the largest, exclusive index of the range to 
      *                              bucketize.
      * @param sourceArrayToIndex    the leading offset.
@@ -97,7 +99,8 @@ final class UnsignedLongBucketInserterThread extends Thread {
                      i++) {
                 final long currentSourceElement = sourceArray[i];
                 final int bucketIndex = 
-                        getSignedBucketIndex(currentSourceElement);
+                        getUnsignedBucketIndex(currentSourceElement,
+                                               recursionDepth);
                 final int targetElementIndex = startIndexMap[bucketIndex] + 
                                                processedMap [bucketIndex] +
                                                auxiliaryBufferOffset;
@@ -110,7 +113,8 @@ final class UnsignedLongBucketInserterThread extends Thread {
                      i++) {
                 final long currentSourceElement = sourceArray[i];
                 final int bucketIndex = 
-                        getSignedBucketIndex(currentSourceElement);
+                        getUnsignedBucketIndex(currentSourceElement,
+                                               recursionDepth);
                 // Note the minus sign in the next statement.
                 final int targetElementIndex = startIndexMap[bucketIndex] + 
                                                processedMap [bucketIndex] -
@@ -121,8 +125,9 @@ final class UnsignedLongBucketInserterThread extends Thread {
         }
     }
     
-    private static final int getSignedBucketIndex(final long key) {
-        final int bitShift = (Long.BYTES - 1) * Byte.SIZE;
-        return (int)((key >>> bitShift) ^ 0b1000_0000);
+    private static final int getUnsignedBucketIndex(final long key,
+                                                    final int byteIndex) {
+        final int bitShift = (Long.BYTES - byteIndex - 1) * Byte.SIZE;
+        return (int)((key >>> bitShift) & 0b1000_0000);
     }
 }
