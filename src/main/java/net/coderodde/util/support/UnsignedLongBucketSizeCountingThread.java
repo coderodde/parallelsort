@@ -5,7 +5,7 @@ package net.coderodde.util.support;
  * @author Rodion "rodde" Efremov
  * @version 1.6 (Jan 12, 2019)
  */
-final class UnsignedLongBucketSizeCountingThread extends Thread {
+public final class UnsignedLongBucketSizeCountingThread extends Thread {
     
     /**
      * The number of distinct buckets considered at each sort invocation. This
@@ -24,7 +24,7 @@ final class UnsignedLongBucketSizeCountingThread extends Thread {
      * {@code localBucketSizeMap[i]} will contain the number of elements in
      * bucket {@code i}.
      */
-    final int[] localBucketSizeMap;
+    public final int[] localBucketSizeMap;
 
     /**
      * The array holding the range to process.
@@ -47,10 +47,10 @@ final class UnsignedLongBucketSizeCountingThread extends Thread {
      */
     private final int recursionDepth;
     
-    UnsignedLongBucketSizeCountingThread(final long[] array,
-                                         final int fromIndex,
-                                         final int toIndex,
-                                         final int recursionDepth) {
+    public UnsignedLongBucketSizeCountingThread(final long[] array,
+                                                final int fromIndex,
+                                                final int toIndex,
+                                                final int recursionDepth) {
         this.localBucketSizeMap = new int[BUCKETS];
         this.array              = array;
         this.fromIndex          = fromIndex;

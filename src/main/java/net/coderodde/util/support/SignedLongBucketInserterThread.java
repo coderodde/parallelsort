@@ -1,10 +1,10 @@
 package net.coderodde.util.support;
 
 /**
- * This class
+ * This class 
  * @author rodde
  */
-final class SignedLongBucketInserterThread extends Thread {
+public final class SignedLongBucketInserterThread extends Thread {
     
     /*'
      * The number of bits to shift to the right in order to extract the least-
@@ -64,13 +64,13 @@ final class SignedLongBucketInserterThread extends Thread {
      *                              bucketize.
      * @param sourceArrayToIndex    the leading offset.
      */
-    SignedLongBucketInserterThread(final long[] sourceArray,
-                                   final long[] targetArray,
-                                   final int[] startIndexMap,
-                                   final int[] processedMap,
-                                   final int auxiliaryBufferOffset,
-                                   final int sourceArrayFromIndex,
-                                   final int sourceArrayToIndex) {
+    public SignedLongBucketInserterThread(final long[] sourceArray,
+                                          final long[] targetArray,
+                                          final int[] startIndexMap,
+                                          final int[] processedMap,
+                                          final int auxiliaryBufferOffset,
+                                          final int sourceArrayFromIndex,
+                                          final int sourceArrayToIndex) {
         this.sourceArray           = sourceArray;
         this.targetArray           = targetArray;
         this.startIndexMap         = startIndexMap;

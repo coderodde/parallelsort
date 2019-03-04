@@ -1,6 +1,11 @@
 package net.coderodde.util;
 
+import net.coderodde.util.support.LongBucketSorterInputTask;
 import java.util.Arrays;
+import net.coderodde.util.support.SignedLongBucketInserterThread;
+import net.coderodde.util.support.SignedLongBucketSizeCountingThread;
+import net.coderodde.util.support.UnsignedLongBucketInserterThread;
+import net.coderodde.util.support.UnsignedLongBucketSizeCountingThread;
 
 /**
  * This class implements an efficient MSD radix sort for arrays containing 
@@ -11,8 +16,6 @@ import java.util.Arrays;
  * algorithm descends into each current bucket and sorts its content by next
  * most significant byte, and so on. 
  * <br/>
- * 
- * 
  * 
  * @author Rodion "rodde" Efremov
  * @version 1.61 (Dec 29, 2018)
@@ -30,17 +33,12 @@ public final class ParallelMSDRadixsort {
      * sequential radix sort is <tt>O(kN)</tt>, where <tt>k</tt> is 
      * between 1 and 8, inclusively.
      */
-    private static final int BUCKETS = 1 << BITS_PER_BUCKET;
+    public static final int BUCKETS = 1 << BITS_PER_BUCKET;
     
     /**
      * The mask for extracting the bucket bits.
      */
     private static final int BUCKET_MASK = 0xff;
-    
-    /**
-     * The mask needed to manipulate the sign bit.
-     */
-    private static final long SIGN_MASK = 1L << 63;
     
     /**
      * The minimum amount of entries to sort for a thread (2^16).
@@ -64,14 +62,25 @@ public final class ParallelMSDRadixsort {
      */
     private static final int INSERTIONSORT_THRESHOLD = 16;
     
+    // We don't need to be able to construct objects of this class.
     private ParallelMSDRadixsort() {}
     
+    /**
+     * Sorts sequentially the input array range {@code array[fromIndex], ...,
+     * array[toIndex - 1]} into an ascending order.
+     * 
+     * @param array     the array holding the range to sort.
+     * @param fromIndex the inclusive index of the leftmost array component.
+     * @param toIndex   the exclusive index of the rightmost array component.
+     */
     public static void sort(final long[] array,
                             final int fromIndex,
                             final int toIndex) {
+        rangeCheck(array.length, fromIndex, toIndex);
         final int rangeLength = toIndex - fromIndex;
         
         if (rangeLength < 2) {
+            // Trivially sorted.
             return;
         }
         
@@ -93,6 +102,7 @@ public final class ParallelMSDRadixsort {
     public static void parallelSort(final long[] array, 
                                     final int fromIndex,
                                     final int toIndex) {
+        rangeCheck(array.length, fromIndex, toIndex);
         final int rangeLength = toIndex - fromIndex;
         
         if (rangeLength < 2) {
@@ -107,7 +117,6 @@ public final class ParallelMSDRadixsort {
         threads = Math.max(1, threads);
         
         if (threads > 1) {
-            System.out.println("Threads: " + threads);
             parallelSortImplSigned(array,
                                    buffer,
                                    fromIndex,
@@ -175,21 +184,21 @@ public final class ParallelMSDRadixsort {
         
         for (int i = 0; i != threads - 1; i++, startIndex += subrangeLength) {
             bucketSizeCounters[i] = 
-                    new SignedLongBucketSizeCountingThreadYeah(
+                    new SignedLongBucketSizeCountingThread(
                             sourceArray,
                             startIndex,
                             startIndex + subrangeLength);
             bucketSizeCounters[i].start();
         }
         
-        SignedLongBucketSizeCountingThreadYeah lastCounterThread = 
-        new SignedLongBucketSizeCountingThreadYeah(sourceArray,
+        SignedLongBucketSizeCountingThread lastCounterThread = 
+        new SignedLongBucketSizeCountingThread(sourceArray,
                                                startIndex,
                                                sourceArrayToIndex);
         
         lastCounterThread.run();
         
-        for (SignedLongBucketSizeCountingThreadYeah thread : bucketSizeCounters) {
+        for (SignedLongBucketSizeCountingThread thread : bucketSizeCounters) {
             try {
                 thread.join();
             } catch (InterruptedException ex) {
@@ -202,7 +211,7 @@ public final class ParallelMSDRadixsort {
         
         // Count the size of each bucket.
         for (int i = 0; i != bucketSizeCounters.length; i++) {
-            SignedLongBucketSizeCountingThreadYeah counter = bucketSizeCounters[i];
+            SignedLongBucketSizeCountingThread counter = bucketSizeCounters[i];
             
             for (int j = 0; j != BUCKETS; j++) {
                 bucketSizeMap[j] += counter.localBucketSizeMap[j];
@@ -388,13 +397,13 @@ public final class ParallelMSDRadixsort {
      * @param sourceArrayFromIndex  the logical starting index of the range to sort.
      * @param sourceArrayToIndex    the logical ending index of the range to sort.
      */
-    static void parallelSortImplUnsigned(final long[] sourceArray,
-                                         final long[] targetArray,
-                                         final int auxiliaryBufferOffset,
-                                         final int threads,
-                                         final int recursionDepth,
-                                         final int sourceArrayFromIndex,
-                                         final int sourceArrayToIndex) {
+    public static void parallelSortImplUnsigned(final long[] sourceArray,
+                                                final long[] targetArray,
+                                                final int auxiliaryBufferOffset,
+                                                final int threads,
+                                                final int recursionDepth,
+                                                final int sourceArrayFromIndex,
+                                                final int sourceArrayToIndex) {
         final int rangeLength = sourceArrayToIndex - sourceArrayFromIndex;
         
         if (rangeLength < QUICKSORT_THRESHOLD) {
@@ -415,11 +424,8 @@ public final class ParallelMSDRadixsort {
             return;
         }
         
-        final UnsignedLongBuckeSizeCountingThread[] bucketSizeCounters = 
-                new UnsignedLongBuckeSizeCountingThread[threads - 1];
-        
-//        final UnsignedLongBucketSizeCountingThread2[] bucketSizeCounters = 
-//                new UnsignedLongBucketSizeCountingThread2[threads - 1];
+        final UnsignedLongBucketSizeCountingThread[] bucketSizeCounters = 
+                new UnsignedLongBucketSizeCountingThread[threads - 1];
         
         final int subrangeLength = rangeLength / threads;
         int startIndex = sourceArrayFromIndex;
@@ -429,19 +435,26 @@ public final class ParallelMSDRadixsort {
                     new UnsignedLongBucketSizeCountingThread(
                             sourceArray,
                             startIndex,
-                            startIndex + subrangeLength);
+                            startIndex + subrangeLength,
+                            recursionDepth);
+            
             bucketSizeCounters[i].start();
         }
         
         UnsignedLongBucketSizeCountingThread lastCounterThread = 
         new UnsignedLongBucketSizeCountingThread(sourceArray,
                                                  startIndex,
-                                                 sourceArrayToIndex);
+                                                 sourceArrayToIndex,
+                                                 recursionDepth);
         
         lastCounterThread.run();
         
         for (UnsignedLongBucketSizeCountingThread thread : bucketSizeCounters) {
-            thread.join();
+            try {
+                thread.join();
+            } catch (InterruptedException ex) {
+                throw new RuntimeException("Problems with multithreading.", ex);
+            }
         }
         
         final int[] bucketSizeMap = new int[BUCKETS];
@@ -592,6 +605,7 @@ public final class ParallelMSDRadixsort {
                                 sourceArray,
                                 threadCountMap[threadIndex],
                                 1,
+                                auxiliaryBufferOffset,
                                 sourceArrayFromIndex - auxiliaryBufferOffset,
                                 sourceArrayToIndex   - auxiliaryBufferOffset,
                                 sourceArrayFromIndex);
@@ -615,6 +629,7 @@ public final class ParallelMSDRadixsort {
             throw new RuntimeException("Problems with multithreading.", ex);
         }   
     }
+    
     /**
      * Performs serial sorting over a requested range. The values of 
      * {@code fromIndex} and {@code toIndex} must be set accordingly by the
@@ -699,14 +714,15 @@ public final class ParallelMSDRadixsort {
      * {@code fromIndex} and {@code toIndex} must be set accordingly by the
      * caller method.
      * 
-     * @param sourceArray           the array that contains all the correct values
-     *                              but in an arbitrary order.
-     * @param targetArray           the array holding the targeted range to sort.
+     * @param sourceArray           the array that contains all the correct 
+     *                              values but in an arbitrary order.
+     * @param targetArray           the array holding the targeted range to 
+     *                              sort.
      * @param auxiliaryBufferOffset the offset of the auxiliary buffer.
-     * @param recursionDepth        the depth of recursion. The value of zero stands
-     *                              for the most-significant byte.
-     * @param sourceArrayFromIndex  the starting, inclusive index into the actual 
-     *                              range in the source array.
+     * @param recursionDepth        the depth of recursion. The value of zero 
+     *                              stands for the most-significant byte.
+     * @param sourceArrayFromIndex  the starting, inclusive index into the 
+     *                              actual range in the source array.
      * @param sourceArrayToIndex    the ending, exclusive index into the actual
      *                              range in the source array.
      */
@@ -725,7 +741,7 @@ public final class ParallelMSDRadixsort {
                           sourceArrayFromIndex,
                           sourceArrayToIndex);
             } else {
-                // 'sourceArray' is actually the auxiliary buffer, sopy to 
+                // 'sourceArray' is actually the auxiliary buffer, copy to 
                 // corresponding range in 'targetArray'.
                 quicksort(sourceArray,
                           sourceArrayFromIndex,
@@ -1237,6 +1253,23 @@ public final class ParallelMSDRadixsort {
             }
             
             indexArray[j + 1] = currentValue;
+        }
+    }
+    
+    /**
+     * Checks that {@code fromIndex} and {@code toIndex} are in the range and 
+     * throws an exception if they aren't.
+     */
+    private static void rangeCheck(int arrayLength, int fromIndex, int toIndex) {
+        if (fromIndex > toIndex) {
+            throw new IllegalArgumentException(
+                    "fromIndex(" + fromIndex + ") > toIndex(" + toIndex + ")");
+        }
+        if (fromIndex < 0) {
+            throw new ArrayIndexOutOfBoundsException(fromIndex);
+        }
+        if (toIndex > arrayLength) {
+            throw new ArrayIndexOutOfBoundsException(toIndex);
         }
     }
 }

@@ -5,12 +5,13 @@ package net.coderodde.util.support;
  * array to its correct bucket in the target
  * @author rodde
  */
-final class UnsignedLongBucketInserterThread extends Thread {
+public final class UnsignedLongBucketInserterThread extends Thread {
     
     /*'
      * The number of bits to shift to the right in order to extract the least-
      * significant byte which is considered as the bucket index.
      */
+    // TODO: Is this faster bucket computer?
     private final int bitShift = (Long.BYTES - 1) * Byte.SIZE;
 
     /**
@@ -73,14 +74,14 @@ final class UnsignedLongBucketInserterThread extends Thread {
      *                              bucketize.
      * @param sourceArrayToIndex    the leading offset.
      */
-    UnsignedLongBucketInserterThread(final long[] sourceArray,
-                                     final long[] targetArray,
-                                     final int[] startIndexMap,
-                                     final int[] processedMap,
-                                     final int auxiliaryBufferOffset,
-                                     final int recursionDepth,
-                                     final int sourceArrayFromIndex,
-                                     final int sourceArrayToIndex) {
+    public UnsignedLongBucketInserterThread(final long[] sourceArray,
+                                            final long[] targetArray,
+                                            final int[] startIndexMap,
+                                            final int[] processedMap,
+                                            final int auxiliaryBufferOffset,
+                                            final int recursionDepth,
+                                            final int sourceArrayFromIndex,
+                                            final int sourceArrayToIndex) {
         this.sourceArray           = sourceArray;
         this.targetArray           = targetArray;
         this.startIndexMap         = startIndexMap;
