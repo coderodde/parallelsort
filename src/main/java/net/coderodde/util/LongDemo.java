@@ -14,7 +14,7 @@ public final class LongDemo {
     private static final int FROM_INDEX = 10;
     private static final int TO_INDEX = LONGS - 10;
     
-    public static void main(String[] args) {
+    public static void majin(String[] args) {
         long seed = System.currentTimeMillis();
         Random random = new Random(seed);
         long[] array1 = getRandomLongArray(LONGS, random);
@@ -23,7 +23,7 @@ public final class LongDemo {
         
         long startTime = System.currentTimeMillis();
         
-        ParallelMSDRadixsort.parallelSort(array2, FROM_INDEX, TO_INDEX);
+        ParallelMSDRadixsort.sort(array1, FROM_INDEX, TO_INDEX);
         
         long endTime = System.currentTimeMillis();
         
@@ -32,9 +32,13 @@ public final class LongDemo {
         startTime = System.currentTimeMillis();
         Arrays.sort(array2, FROM_INDEX, TO_INDEX);
         endTime = System.currentTimeMillis();
+        
+        System.out.println("Arrays.sort in " + (endTime - startTime) + " ms.");
+        System.out.println(
+                "Algorithms agree: " + Arrays.equals(array1, array2));
     }
     
     private static long[] getRandomLongArray(int length, Random random) {
-        return random.longs(LONGS).toArray();
+        return random.longs(length).toArray();
     }
 }

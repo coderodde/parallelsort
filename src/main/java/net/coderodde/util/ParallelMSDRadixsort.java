@@ -2,6 +2,7 @@ package net.coderodde.util;
 
 import net.coderodde.util.support.LongBucketSorterInputTask;
 import java.util.Arrays;
+import java.util.Random;
 import net.coderodde.util.support.SignedLongBucketInserterThread;
 import net.coderodde.util.support.SignedLongBucketSizeCountingThread;
 import net.coderodde.util.support.UnsignedLongBucketInserterThread;
@@ -48,19 +49,13 @@ public final class ParallelMSDRadixsort {
     /**
      * The maximum length of a range to sort using quick sort.
      */
-    private static final int QUICKSORT_THRESHOLD = 2;
+    private static final int QUICKSORT_THRESHOLD = 1000;
     
     /**
-     * The index of the least significant byte. For example, the index of the
-     * most significant byte is zero.
-     */
-    private static final int LEAST_SIGNIFICANT_BYTE_INDEX = 7;
-    
-    /**
-     * The least length of a range to sort with quicksort. For smaller ranges
+     * The least length of a range to sort with Quicksort. For smaller ranges
      * use insertion sort.
      */
-    private static final int INSERTIONSORT_THRESHOLD = 16;
+    private static final int INSERTIONSORT_THRESHOLD = 11;
     
     // We don't need to be able to construct objects of this class.
     private ParallelMSDRadixsort() {}
@@ -85,7 +80,8 @@ public final class ParallelMSDRadixsort {
         }
         
         final long[] buffer = Arrays.copyOfRange(array, fromIndex, toIndex);
-        sortImplSigned(buffer, array, fromIndex, fromIndex, toIndex);
+//        sortImplSigned(buffer, array, fromIndex, 0, rangeLength); //!
+        sortImplSigned(array, buffer, fromIndex, fromIndex, toIndex);
     }
     
     public static void sort(final long[] array) {
@@ -646,8 +642,9 @@ public final class ParallelMSDRadixsort {
      * @param sourceArrayToIndex    the ending, exclusive index into the actual
      *                              range in the source array.
      */
-    static final void sortImplSigned(final long[] sourceArray,
-                                     final long[] targetArray,
+    // sortImplSigned(array, buffer, fromIndex, fromIndex, toIndex);
+    static final void sortImplSigned(final long[] sourceArray, // array
+                                     final long[] targetArray, // buffer
                                      final int auxiliaryBufferOffset,
                                      final int sourceArrayFromIndex,
                                      final int sourceArrayToIndex) {
@@ -673,9 +670,7 @@ public final class ParallelMSDRadixsort {
         }
         
         // Compute the indices of the first element in each bucket.
-        startIndexMap[0] = sourceArrayFromIndex /*- (recursionDepth == 0 ?
-                                                   0 :
-                                                   auxiliaryBufferOffset)*/;
+        startIndexMap[0] = sourceArrayFromIndex;
         
         for (int i = 1; i != BUCKETS; i++) {
             startIndexMap[i] = startIndexMap[i - 1] +
@@ -732,6 +727,13 @@ public final class ParallelMSDRadixsort {
                                        final int recursionDepth,
                                        final int sourceArrayFromIndex,
                                        final int sourceArrayToIndex) {
+        if (recursionDepth == Long.BYTES) {
+            // Here, we passed through all the 8 bytes of the long values.
+            return;
+        }
+        
+        // Here, 'recursionDepth' is at least 1 and at most 7. Depth 1 stands
+        // for the second most significant byte.
         final int rangeLength = sourceArrayToIndex - sourceArrayFromIndex;
         
         if (rangeLength <= /* QUICKSORT_THRESHOLD */ 2) {
@@ -1271,5 +1273,103 @@ public final class ParallelMSDRadixsort {
         if (toIndex > arrayLength) {
             throw new ArrayIndexOutOfBoundsException(toIndex);
         }
+    }
+    
+    public static void main(String[] args) {
+        long[] array = { 0xffL, 0xb9, 0x56, 0x8e, 0xd5, 0x5d, 0xc1};
+        
+        for (int i = 0; i < array.length; i++) {
+            array[i] <<= 7 * 8;
+        }
+        
+        sort(array, 2, array.length - 1);
+        
+//        System.out.println(Arrays.toString(array));
+        for (long l : array) {
+            System.out.print(Long.toHexString(l) + " ");
+        }
+        
+        System.out.println("");
+        
+        long seed = System.currentTimeMillis();
+        Random random = new Random(seed);
+        System.out.println("seed = " + seed);
+        
+        int size = 1000;
+        
+        array = createRandomArraySmall(size, random);
+        long[] array2 = array.clone();
+        sort(array, 3, array.length - 2);
+        Arrays.sort(array2, 3, array2.length - 2);
+        
+        System.out.println(Arrays.equals(array, array2));
+        System.out.println("------------");
+        warmup(random);
+        benchmark(random);
+    }
+    
+    public static long[] createRandomArraySmall(int size, Random random) {
+        long[] array = new long[size];
+        
+        for (int i = 0; i < size; i++) {
+            array[i] = random.nextLong();
+        }
+        
+        return array;
+    }
+    
+    private static final int WARMUP_CYCLES = 10;
+    private static final int WARMUP_CYCLE_ARRAY_LENGTH = 1_000_000;
+    private static final int BENCHMARK_ARRAY_LENGTH = 50_000_000;
+    private static final int FROM_INDEX = 3;
+    private static final int SKIP_SUFFIX_LENGTH = 13;
+    
+    private static void warmup(Random random) {
+        for (int i = 0; i < WARMUP_CYCLES; i++) {
+            long[] array = createRandomArraySmall(
+                    WARMUP_CYCLE_ARRAY_LENGTH, 
+                    random);
+            
+            long[] array2 = array.clone();
+            long[] array3 = array.clone();
+            sort(array);
+            Arrays.sort(array2);
+            Arrays.parallelSort(array3);
+        }
+    }
+    
+    private static void benchmark(Random random) {
+        long[] array1 = createRandomArraySmall(BENCHMARK_ARRAY_LENGTH, random);
+        long[] array2 = array1.clone();
+        long[] array3 = array1.clone();
+        
+        long startTime = System.currentTimeMillis();
+        sort(array1, FROM_INDEX, array1.length - SKIP_SUFFIX_LENGTH);
+        long endTime = System.currentTimeMillis();
+        
+        System.out.println("ParallelMSDRadixsort.sort in " + 
+                           (endTime - startTime) + " milliseconds.");
+        
+        startTime = System.currentTimeMillis();
+        Arrays.sort(array2, FROM_INDEX, array2.length - SKIP_SUFFIX_LENGTH);
+        endTime = System.currentTimeMillis();
+        
+        System.out.println("Arrays.sort in " + 
+                           (endTime - startTime) + " milliseconds.");
+        
+        startTime = System.currentTimeMillis();
+        Arrays.parallelSort(
+                array3, 
+                FROM_INDEX, 
+                array3.length - SKIP_SUFFIX_LENGTH);
+        endTime = System.currentTimeMillis();
+        
+        System.out.println("Arrays.parallelSort in " + 
+                           (endTime - startTime) + " milliseconds.");
+        
+        System.out.println(
+                "Arrays are equal: " + 
+                        (Arrays.equals(array1, array2) && 
+                         Arrays.equals(array2, array3)));
     }
 }

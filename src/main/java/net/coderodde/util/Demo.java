@@ -8,7 +8,7 @@ import static net.coderodde.util.Utilities.createRandomArray;
 
 public class Demo {
 
-    public static void main(String[] args) {
+    public static void mhain(String[] args) {
         benchmarkLongArrays();
     }
     
